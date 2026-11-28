@@ -27,14 +27,14 @@ export const BOSS_MODE = {
   medium: { every: 1, warn: 1, power: 1, hold: 1, heat: 1, n: 3 },
   hard: { every: 0.85, warn: 0.85, power: 1.12, hold: 1.1, heat: 0.85, n: 3 },
 };
-export const WARN = { snap: 1.1, snap2: 1.2, silt: 0.8, bubbles: 1.35, barnacles: 1.25, whirl: 1.4, /* King Crab moves */ gale: 1.1, freeze: 1.0, icicles: 1.0, stomp: 1.0, punch: 1.1, rock: 0.45, rock2: 0.45, throw: 0.9, throw2: 0.9, fog: 1.0, bolt: 1.0, bolt2: 1.0, gust: 1.0, swoop: 1.25, wind: 1.2, gears: 0.9, gears2: 0.9, sweep: 1.1, roll: 1.2, /* sim/bossmoves.js: x mode warn, Hard 0.85 keeps all >= 1.27 s */ cage: 1.5, shards: 1.6, magma: 1.8, whip: 1.5, dive: 1.8, wgust: 1.5, pop: 1.8 }; // v4: the Clockwork Owl (sim/owl.js)
+export const WARN = { snap: 1.1, snap2: 1.2, silt: 0.8, bubbles: 1.35, barnacles: 1.25, whirl: 1.4, /* King Crab moves */ gale: 1.1, freeze: 1.0, icicles: 1.0, stomp: 1.0, punch: 1.1, rock: 1.0, rock2: 1.0, rock3: 1.1 /* 0.8.19 (aggroB): he rears and roars at the volcano */, throw: 0.9, throw2: 0.9, fog: 1.0, bolt: 1.0, bolt2: 1.0, gust: 1.0, swoop: 1.25, wind: 1.2, gears: 0.9, gears2: 0.9, sweep: 1.1, roll: 1.2, /* sim/bossmoves.js: x mode warn, Hard 0.85 keeps all >= 1.27 s */ cage: 1.5, shards: 1.6, magma: 1.8, whip: 1.5, dive: 1.8, wgust: 1.5, pop: 1.8 }; // v4: the Clockwork Owl (sim/owl.js)
 const MV_POP_T = 3; // sim/bossmoves.js MV.popT
 const MOVES = new Set(['cage', 'shards', 'magma', 'whip', 'dive', 'wgust', 'pop']);
 const GALE_T = 2.6, FREEZE_T = 4, FROST_ORB_T = 3, CHUNK_FREEZE_T = 3, FOG_T = 3.5, WALL_T = 8, ICE_WALL_T = 6, PATCH_T = 6;
 const ICE_HANG = 1.1; // s an icicle shakes before it drops (level icicles; a volley uses WARN.icicles)
 const THROW_FLY = 0.6, PUNCH_W = 2.4, HEAT_T = 9;
-export const BOSS_TITLE = { weasel: 'The Weasel', snake: 'Serpent Hollow', blizzard: 'Baron von Brr', golem: 'Duke Quartz', salamander: 'Lava Salamander', storm: 'Thunderstorm', eagle: 'Storm Eagle', ratking: 'The Rat King', kingcrab: 'King Crab', owl: 'Clockwork Owl', gator: 'Grandpa Gator' };
-export const ATTACK_NAME = { gale: 'Gale', freeze: 'Deep freeze', icicles: 'Icicle volley', stomp: 'Stomp', punch: 'Ring punch', rock: 'Lava rock', rock2: 'Lava volley', throw: 'Throw', throw2: 'Double throw', fog: 'Curse fog', bolt: 'Lightning', bolt2: 'Twin lightning', snap: 'Claw snap', snap2: 'Twin claws', silt: 'Silt cloud', bubbles: 'Bubble barrage', barnacles: 'Barnacle toss', whirl: 'Whirlpool spin', swoop: 'Swoop', wind: 'Wind-up', gears: 'Gear bomb', gears2: 'Gear bombs', sweep: 'Tail sweep', roll: 'Death roll', cage: 'Crystal cage', shards: 'Shard rain', magma: 'Magma ring', whip: 'Tail whip', dive: 'Dive snatch', wgust: 'Wing gust', pop: 'Tunnel pop' };
+export const BOSS_TITLE = { weasel: 'The Weasel', snake: 'Serpent Hollow', blizzard: 'Baron von Brr', golem: 'Duke Quartz', salamander: 'Lava Salamander', storm: 'Thunderstorm', eagle: 'Storm Eagle', ratking: 'The Rat King', kingcrab: 'King Crab', owl: 'Clockwork Owl', gator: 'Grandpa Gator', raccoon: 'Bandit' }; // 0.8.17 bandit
+export const ATTACK_NAME = { gale: 'Gale', freeze: 'Deep freeze', icicles: 'Icicle volley', stomp: 'Stomp', punch: 'Ring punch', rock: 'Lava rock', rock2: 'Lava volley', rock3: 'Lava volley', throw: 'Throw', throw2: 'Double throw', fog: 'Curse fog', bolt: 'Lightning', bolt2: 'Twin lightning', snap: 'Claw snap', snap2: 'Twin claws', silt: 'Silt cloud', bubbles: 'Bubble barrage', barnacles: 'Barnacle toss', whirl: 'Whirlpool spin', swoop: 'Swoop', wind: 'Wind-up', gears: 'Gear bomb', gears2: 'Gear bombs', sweep: 'Tail sweep', roll: 'Death roll', cage: 'Crystal cage', shards: 'Shard rain', magma: 'Magma ring', whip: 'Tail whip', dive: 'Dive snatch', wgust: 'Wing gust', pop: 'Tunnel pop' };
 const RING_FILT = { filterCategoryBits: 1, filterMaskBits: 2 | 4 | 64 | 128 }; // sim.js CAT.RING / MASK.RING
 
 const M_ = (sim) => BOSS_MODE[sim.mode] || BOSS_MODE.medium;
@@ -132,6 +132,10 @@ export function animalsHit(sim, kind, o = {}) {
   if (sim.seaHit) n += sim.seaHit(kind, o); // v3.3: the octopus lets go, fish scatter (sim/sea.js)
   if (sim.thieves && sim.thieves.length) n += sim.thiefHit(kind, o); // v3.6: the weasel and the rats
   if (sim.bayouHit) n += sim.bayouHit(kind, o); // v3.7: a quake flips snapping turtles, lightning scatters mosquitoes
+  if (sim.pipHit) n += sim.pipHit(kind, o); // 0.8.17 pip
+  if (sim.cocoHit) n += sim.cocoHit(kind, o); // 0.8.17 coco
+  if (sim.band) n += sim.bandHit(kind, o); // 0.8.17 bandit: lightning on his paw hurts, a quake or a rock makes him reel
+  if (sim.kit && (kind === 'bolt' || kind === 'quake' || kind === 'rock')) n += sim.kitHit(kind, o); // 0.8.18 kits: back into the sack
   if (kind === 'quake' || kind === 'bolt') {
     const B = sim.bx && sim.bx.boss;
     if (B && B.den && B.atk && B.atk.ph === 'warn') { B.atk = null; B.t = 1.5; B.flinch = 0.8; sim.emit('bossFlinch', { x: B.x, y: B.y }); }
@@ -209,6 +213,8 @@ function iceStep(sim, dt) {
       const p = e.body.getPosition();
       if (Math.hypot(p.x - I.x, p.y - tip) < (I.big ? 0.36 : 0.3)) {
         gone = true;
+        // 0.8.18 kits: an egg the kits carry has a kit riding on top: the ice bonks HIM, they tumble and the egg is spared
+        if (sim.kit && sim.kit.g && sim.kit.g.eid === e.id && (sim.kit.g.ph === 'carry' || sim.kit.g.ph === 'lift')) { sim.emit('icicleShatter', { x: I.x, y: tip, big: I.big }); sim.kitTumble(sim.kit.g, 'ice'); break; }
         sim.emit('icicleHit', { egg: e, x: I.x, y: tip, big: I.big });
         sim.crack(e, 0, 'icicle', I.big ? 2 : 1);
       }
@@ -390,11 +396,12 @@ function bossStep(sim, B, dt) {
   if (Math.abs(gx - B.x) > 0.02) B.face = gx > B.x ? 1 : -1;
   B.x += (gx - B.x) * s;
   B.y += (gy - B.y) * Math.min(1, dt * (A && A.name === 'stomp' && A.ph === 'act' ? 30 : 4));
-  if (B.kind === 'salamander') sim.salBossPose?.(B); // the creature is the boss: its lava rocks come from its mouth
+  if (B.kind === 'salamander') sim.salBossPose?.(B); // the creature is the boss (0.8.19: his lava comes from the volcano he roars at)
   else if (B.kind === 'blizzard' && sim.level.bossFight.gecko) sim.geckoBossPose(B); // L15: the frost gecko in the vault is the boss
   else if (B.kind === 'golem' && sim.level.bossFight.thorn) sim.thornBossPose(B); // L20: Duke Quartz in the vault is the boss
   else if (B.kind === 'gator') sim.gatorBossPose?.(B); // v3.7: Grandpa Gator lies in the outer channel
   else if (B.den) sim.thiefBossPose(B); // v3.6: the thief boss throws from its mouth
+  else if (B.kind === 'raccoon') sim.bandBossPose?.(B); // 0.8.17 bandit: he stands in the yard under the vault
   // quake after a stomp
   if (B.quake > 0) {
     B.quake -= dt;
@@ -432,7 +439,8 @@ function bossStep(sim, B, dt) {
     A.ph = 'act';
     A.t = A.name === 'gale' ? GALE_T : 0.35;
     A.dur = A.t;
-    if (A.name === 'gale' && B.kind === 'blizzard' && sim.level.bossFight.gecko) { const C = sim.geckoOf(); if (C && sim.salLive(C)) A.ch = sim.salCh(C); } // his gale blows along his own channel
+    if (A.name === 'gale' && B.kind === 'blizzard' && sim.level.bossFight.gecko) { const C = sim.geckoOf(); if (C && sim.salLive(C)) A.ch = sim.salCh(C); } // his gale blows hardest along his own channel
+    if (A.name === 'gale' && B.kind === 'blizzard') A.turn = 0.7; // 2026-11-16 (mykee): the blizzard's gale also drags the rings round (gently: Grandpa Gator's roll spins them much faster)
     actAttack(sim, B, A, M);
     if (A.name === 'gale') animalsHit(sim, 'gust', { dir: A.dir, power: (sim.level.bossFight.gale ?? 5) * M.power / 5, dur: GALE_T });
     sim.emit('bossAct', { kind: B.kind, attack: A.name, x: B.x, y: B.y, ring: A.ring, dir: A.dir });
@@ -497,11 +505,17 @@ function startAttack(sim, B, name, M) {
       const dir = ring.oneway || (sim.rand() < 0.5 ? 1 : -1);
       return { ring: ring.i, dir };
     }
-    case 'rock': case 'rock2': {
-      const spots = [];
-      for (const e of T.slice(0, name === 'rock2' ? 2 : 1)) {
+    case 'rock': case 'rock2': case 'rock3': {
+      if (sim.menaceMay && !sim.menaceMay('boss', 'volley')) return null; // 0.8.19 (aggroB): the menace director's say
+      const spots = [], nV = Math.min(3, (name === 'rock3' ? 3 : name === 'rock2' ? 2 : 1) + (B.phase >= 2 ? 1 : 0)); // more per phase: the last phase adds one
+      for (const e of T.slice(0, nV)) {
         const ring = floorOf(e), p = e.body.getPosition();
         spots.push({ ri: ring.i, la: Math.atan2(p.y, p.x) - ring.body.getAngle() });
+      }
+      // 0.8.19 a volley with fewer eggs out than bombs: the rest land ahead of the leading egg, on its way to its nearest gap
+      for (let j = 1; spots.length < nV && T[0] && j <= 2; j++) {
+        const e = T[0], ring = floorOf(e), p = e.body.getPosition(), ga = nearestGap(sim, ring, e), s0 = ga ? Math.sign(ga) : 1;
+        spots.push({ ri: ring.i, la: Math.atan2(p.y, p.x) + s0 * j * (1.1 / ring.r) - ring.body.getAngle() });
       }
       if (!spots.length) return null;
       return { spots, aim: T[0].body.getPosition().x };
@@ -611,9 +625,11 @@ function actAttack(sim, B, A, M) {
       sim.emit('bossPunch', { ring: A.ring, dir: A.dir, x: B.x, y: B.y });
       break;
     }
-    case 'rock': case 'rock2':
+    case 'rock': case 'rock2': case 'rock3':
+      if (sim.menaceDone) sim.menaceDone('boss', 'volley', false);
       for (const s of A.spots) {
-        const k = { ri: s.ri, la: s.la, ph: 'fly', t: 0, x0: B.x, y0: B.y, x: B.x, y: B.y };
+        const V = sim.volcOrigin ? sim.volcOrigin() : { x: B.x, y: B.y }; // 0.8.19 (aggroB): the volcano throws them, not his mouth
+        const k = { ri: s.ri, la: s.la, ph: 'fly', t: 0, x0: V.x, y0: V.y, x: V.x, y: V.y, v: sim.salHot ? 1 : 0 };
         sim.lavaRocks.push(k);
         const q = sim.rockAt(k);
         sim.emit('lavaWarn', { x: q.x, y: q.y, ring: s.ri });
@@ -647,8 +663,14 @@ export function galeForce(sim, A, M, dt) {
   };
   for (const e of sim.aliveEggs()) {
     if (e.honey > 0 || e.icy > 0) continue;
-    if (A.ch != null && sim.channelOf(e) !== A.ch) continue; // L15: the gecko's gale runs along his own channel
-    push(e.body, e.stone > 0 ? 0.3 * sim.gk : e.chick ? 1.3 : e.bubbleFix ? 1.6 : sim.gk); // gk: the gale keeps its strength against heavier eggs (chicks and bubbles kept their weight)
+    // L15: the gecko's gale runs hardest along his own channel; 2026-11-16 (mykee: "the wind has no effect on the
+    // eggs") every other egg still feels most of it
+    const own = A.ch == null || sim.channelOf(e) === A.ch ? 1 : 0.4;
+    push(e.body, own * (e.stone > 0 ? 0.3 * sim.gk : e.chick ? 1.3 : e.bubbleFix ? 1.6 : sim.gk)); // gk: the gale keeps its strength against heavier eggs (chicks and bubbles kept their weight)
+  }
+  if (A.turn) for (const r of sim.rings) { // the rings drift with the wind (a held ring is in the player's hand)
+    if (r.held || r.motor || r.lock > 0 || !r.grabbable) continue;
+    r.target = r.body.getAngle() + A.dir * A.turn * ramp * 0.05; // ~0.5 rad/s at full gale
   }
   for (const r of sim.rocks) if (r.alive && (A.ch == null || sim.chAt(Math.hypot(r.body.getPosition().x, r.body.getPosition().y)) === A.ch)) push(r.body, 0.5 * sim.gk);
   void dt;

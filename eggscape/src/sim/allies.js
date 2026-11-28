@@ -234,6 +234,7 @@ export const allyMethods = {
     if (E) { this.hitEagle('crow', {}); if (E.phase === 'dazed') E.t = bk === 'eagle' ? TB : T; n++; }
     for (const V of this.allyThieves()) { this.thDaze(V, V.boss ? TB : T, 'crow'); n++; } // v3.6: the weasel and the rats
     n += this.frogHit('crow', T); // v3.5: the frog is stunned too
+    if (this.kit) n += this.kitHit('crow'); // 0.8.18 kits: they dive back into mama's sack
     if (B) { bossStun(this, TB); n++; }
     // the downside: the shockwave nudges every egg along its channel, away from where it stands
     const nr = this.rings.length, v = R.nudge * M.down;

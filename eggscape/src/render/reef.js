@@ -3,6 +3,7 @@
 // Crisp cel-shaded code art in the house style: dark outline, two-tone shading, no pale rims or halos. ctx is in world
 // space (m, y up); each creature is drawn in a local y-DOWN px space (pxSpace). Frozen / stunned looks: render/status.js.
 import { RING_TH, TAU, EGG_H, EGG_W } from '../sim/geom.js';
+import { drawHomeEggs } from './world.js';
 import { HERMIT, PUFF, JELLY } from '../sim/reef.js';
 import { statusClock, statusDraw, dizzyStars, spiralEye, boltStroke } from './status.js';
 import { drawKingCrab, drawKingOver, iceShards } from './kingcrab.js';
@@ -28,6 +29,9 @@ export const PFI = { line: '#12324a', hi: '#c4ecfb', body: '#8fd0ee', lo: '#4f97
 export const JFI = { line: '#12324a', bell: '#8fd0ee', bellLo: '#4f97c4', bellHi: '#b8e2f4', core: '#d8eef8', arm: '#6fb4dc', tent: '#4f97c4', sting: '#fff17a' };
 export const HERMIT_ART = 1.55; // the hermit is drawn this much bigger than its old 1 px-per-m art (body clearly bigger than an egg)
 export const JELLY_ART = 1.3;
+// the hermit's entrance: HERMIT_ENTER s in all, ending when it starts to walk. Shares of it: the roll, when the pop starts, the pop
+export const HERMIT_ENTER = HERMIT.roll + HERMIT.in;
+const EN = { roll: 0.42, pop: 1 - HERMIT.pop / (HERMIT.roll + HERMIT.in), popT: 0.3 };
 
 // ---------------------------------------------------------------- hermit crab
 // (x, y) = the point on the floor under it, s = px per metre. Local frame: +x = its facing, -y = up (away from the floor).
@@ -39,16 +43,38 @@ export const JELLY_ART = 1.3;
 // it lunges.
 export function drawHermit(ctx, x, y, s, t, o = {}) {
   const face = o.face || 1, pose = o.pose || 'walk', u = o.u ?? 0, lw = Math.max(1.5, s * 0.036), part = o.part || 'all', HC = o.ice ? HCI : HCP;
-  const flip = pose === 'flip', pinch = pose === 'pinch', carry = pose === 'carry';
+  const pinch = pose === 'pinch', carry = pose === 'carry';
+  const fk = clamp(o.flipK ?? (pose === 'flip' ? 1 : 0), 0, 1), flip = fk > 0.5, daze = clamp(o.daze || 0, 0, 1); // fk: how far over on its back
   ctx.save();
   ctx.translate(x, y);
   ctx.globalAlpha *= o.alpha ?? 1;
-  if (pose === 'in') { const k = back(sstep(u)); ctx.translate(0, (1 - k) * 0.2 * s); ctx.scale(0.4 + 0.6 * k, 0.4 + 0.6 * k); }
   ctx.scale(face, 1);
+  // the entrance (u 0..1 over HERMIT_ENTER s): a plain shell tumbles in along the floor, rocks to a stop, two eyes blink in
+  // its dark mouth, then legs, eyes and claws pop out with a bounce
+  let popK = 1, rollA = 0, peek = 0, trail = 0;
+  if (pose === 'in') {
+    const r = clamp(u / EN.roll, 0, 1), e = 1 - (1 - r) * (1 - r), q = clamp((u - EN.roll) / (EN.pop - EN.roll), 0, 1), pq = clamp((u - EN.pop) / EN.popT, 0, 1);
+    popK = pq <= 0 ? 0 : back(pq, 2.6);
+    rollA = -(1 - e) * TAU * 1.25 + (r >= 1 ? Math.sin(q * TAU * 1.5) * 0.16 * (1 - q) : 0);
+    peek = pq > 0 ? 0 : sstep(q / 0.35);
+    trail = r < 1 ? 1 - r : 0;
+    ctx.globalAlpha *= clamp(r / 0.18, 0, 1);
+    ctx.translate(-(1 - e) * 0.55 * s, -Math.abs(Math.sin(r * Math.PI * 2.5)) * 0.04 * s * (1 - r) - Math.sin(pq * Math.PI) * 0.07 * s);
+    if (trail > 0) { // bubbles it leaves behind as it tumbles
+      ctx.save(); ctx.lineWidth = Math.max(1, lw * 0.5); ctx.strokeStyle = 'rgba(235,250,255,0.85)'; ctx.fillStyle = 'rgba(190,235,255,0.25)';
+      for (let i = 0; i < 5; i++) { const a = (r * 1.6 + i * 0.23) % 1, bx = -(0.3 + i * 0.09 + a * 0.12) * s, by = -(0.08 + a * 0.5 + (i % 2) * 0.1) * s; ctx.globalAlpha = (o.alpha ?? 1) * trail * (1 - a); ctx.beginPath(); ctx.arc(bx, by, (0.02 + 0.012 * (i % 3)) * s, 0, TAU); ctx.fill(); ctx.stroke(); }
+      ctx.restore();
+    }
+  }
+  const popped = (px0, py0, fn) => { if (popK <= 0.02) return; if (popK === 1) { fn(); return; } ctx.save(); ctx.translate(px0, py0); ctx.scale(popK, popK); ctx.translate(-px0, -py0); fn(); ctx.restore(); };
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  if (part !== 'front' && !flip) { ctx.fillStyle = 'rgba(0,0,0,0.24)'; ctx.beginPath(); ctx.ellipse(-0.02 * s, 0, 0.44 * s, 0.035 * s, 0, 0, TAU); ctx.fill(); }
-  if (flip) { ctx.translate(0, -0.3 * s); ctx.rotate(Math.PI + Math.sin(t * 9) * 0.12); ctx.translate(0, 0.3 * s); } // on its back, in place
-  const ph = (o.walk || 0) / 0.028, bob = pose === 'walk' || carry ? Math.abs(Math.sin(ph)) * 0.012 * s : 0;
+  if (part !== 'front') { ctx.fillStyle = 'rgba(0,0,0,0.24)'; ctx.beginPath(); ctx.ellipse(-0.02 * s, 0, (0.44 - 0.16 * fk) * s, 0.035 * s, 0, 0, TAU); ctx.fill(); }
+  if (fk > 0) { // the tumble: a little hop as it rolls over its shell, then it rocks on its back, kicking; the same roll back
+    const ef = sstep(fk), hop = Math.sin(ef * Math.PI) * 0.16 * s, rock = fk > 0.97 ? Math.sin(t * 9) * 0.12 : 0;
+    ctx.translate(0, -0.3 * s - hop); ctx.rotate(-Math.PI * ef + rock); ctx.translate(0, 0.3 * s);
+  }
+  if (daze > 0) { ctx.translate(0, -0.25 * s); ctx.rotate(Math.sin(t * 22) * 0.09 * daze); ctx.translate(0, 0.25 * s); } // shakes it off
+  const ph = (o.walk || 0) / 0.028, bob = pose === 'walk' || pose === 'stalk' || carry ? Math.abs(Math.sin(ph)) * 0.012 * s : 0;
   // the acted grab: rear back (anticipation), then lunge
   const rear = pinch ? Math.sin(clamp(u / 0.8, 0, 1) * Math.PI) * 0.16 + Math.sin(t * 40) * 0.012 : 0, lunge = pinch ? sstep((u - 0.8) / 0.2) : 0;
   ctx.translate(lunge * 0.07 * s - rear * 0.12 * s, -bob);
@@ -57,7 +83,7 @@ export function drawHermit(ctx, x, y, s, t, o = {}) {
     for (let i = 0; i < 3; i++) {
       const c = ((((ph + i * 2.1 + (near ? 0 : Math.PI)) / TAU) % 1) + 1) % 1, st = 0.62, stride = 0.07 * s;
       let fx, lift = 0;
-      if (flip) { fx = Math.sin(t * 13 + i * 2 + (near ? 0 : 1.5)) * 0.03 * s; lift = 0.05 * s + Math.cos(t * 13 + i * 2) * 0.03 * s; }
+      if (flip) { fx = Math.sin(t * 13 + i * 2 + (near ? 0 : 1.5)) * 0.05 * s; lift = 0.06 * s + Math.cos(t * 13 + i * 2) * 0.05 * s; }
       else if (c < st) fx = stride * (0.5 - c / st); else { const q = (c - st) / (1 - st); fx = stride * (-0.5 + q * q * (3 - 2 * q)); lift = Math.sin(q * Math.PI) * 0.05 * s; }
       const hip = [(0.03 + i * 0.06) * s, -0.16 * s], foot = [(0.02 + i * 0.105 + (near ? 0.03 : -0.02)) * s + fx, -lift];
       const K = ik(hip[0], hip[1], foot[0], foot[1], 0.13 * s, 0.15 * s, -1);
@@ -65,10 +91,10 @@ export function drawHermit(ctx, x, y, s, t, o = {}) {
     }
   };
   if (part !== 'front') {
-    legs(false);
+    popped(0.1 * s, -0.16 * s, () => legs(false));
     // the shell: a fat whorled conch, mouth toward the front
     ctx.save();
-    ctx.translate(sh.x, sh.y); ctx.rotate(-0.18 - rear * 0.5 + (carry ? Math.sin(ph) * 0.03 : 0)); ctx.scale(1, 0.8);
+    ctx.translate(sh.x, sh.y); ctx.rotate(-0.18 - rear * 0.5 + (carry ? Math.sin(ph) * 0.03 : 0) + rollA); ctx.scale(1, 0.8);
     const r = sh.r;
     const conch = () => {
       ctx.beginPath();
@@ -93,11 +119,17 @@ export function drawHermit(ctx, x, y, s, t, o = {}) {
     ctx.beginPath(); ctx.ellipse(r * 0.72, r * 0.25, r * 0.32, r * 0.56, 0.25, 0, TAU);
     fillStroke(ctx, HC.mouth, HC.line, lw);
     ctx.beginPath(); ctx.ellipse(r * 0.72, r * 0.25, r * 0.32, r * 0.56, 0.25, -1.9, 0.2); ctx.lineWidth = lw * 0.9; ctx.strokeStyle = HC.shellHi; ctx.stroke();
+    if (peek > 0) { // somebody is in there: two eyes open in the dark and blink
+      const lid = Math.max(1 - peek, Math.sin(t * 17) > 0.86 ? 1 : 0);
+      for (const ey of [-0.02, 0.36]) { ctx.beginPath(); ctx.ellipse(r * 0.74, r * ey, r * 0.13, r * 0.15 * (1 - lid) + r * 0.012, 0, 0, TAU); ctx.fillStyle = HC.white; ctx.fill(); if (lid < 0.6) { ctx.beginPath(); ctx.arc(r * 0.79, r * ey, r * 0.06, 0, TAU); ctx.fillStyle = HC.eye; ctx.fill(); } }
+    }
     ctx.restore();
   }
-  if (part !== 'back') {
+  if (part !== 'back') popped(0.12 * s, -0.2 * s, () => {
     legs(true);
     const cx = 0.17 * s, cy = -0.2 * s, look = pinch ? 0.7 : 0.45;
+    // brow mood: + scowl (inner ends down), - worried; it schemes on the walk, scowls at an egg, is smug with one, frets when flipped
+    const mood = o.ice ? -0.6 : flip || daze > 0.3 ? -1 : pinch ? 1 : pose === 'stalk' ? 0.75 : carry ? 0.45 : 0.3;
     // the small far claw, behind the body
     const snapK = pinch ? 0.5 + 0.5 * Math.sin(t * 24) : carry ? 0.08 : 0.3 + 0.12 * Math.sin(t * 3);
     const raise = pinch ? 0.55 + 0.45 * sstep(u * 2.5) - lunge * 0.7 : carry ? 0.12 : flip ? 0.5 + Math.sin(t * 8) * 0.2 : Math.sin(t * 1.7) * 0.05;
@@ -106,9 +138,11 @@ export function drawHermit(ctx, x, y, s, t, o = {}) {
     for (const [ex, len, sd] of [[0.105, 0.125, -1], [0.215, 0.11, 1]]) {
       const bx = ex * s, by = cy - 0.07 * s, sway = Math.sin(t * 2 + ex * 20) * 0.08 - rear * 1.2 + lunge * 0.3, tx = bx + Math.sin(sway) * len * s, ty = by - Math.cos(sway) * len * s;
       limb(ctx, [[bx, by], [tx, ty]], [0.022 * s, 0.018 * s], HC.body, HC.line, lw * 0.75);
-      const er = 0.052 * s;
+      const er = 0.064 * s; // faces3: 1.23x, the eyes on stalks read at play size
       if (o.stun) { ctx.beginPath(); ctx.arc(tx, ty, er, 0, TAU); fillStroke(ctx, HC.white, HC.line, lw * 0.8); spiralEye(ctx, tx, ty, er * 0.8, t, sd, HC.line); }
-      else eye(ctx, tx, ty, { r: er, white: HC.white, iris: HC.eye, irisR: 0.5, pupilR: 0.2, look: { x: look, y: pinch ? 0.25 : 0.1 }, lid: Math.max(pinch ? 0.3 : 0.08, o.ice ? 0 : blinkAt(t, 2)), mad: pinch ? sd * -0.5 + 0.25 : 0, lidCol: HC.body, line: HC.line, lw: lw * 0.75 });
+      else eye(ctx, tx, ty, { r: er, white: HC.white, iris: HC.eye, irisR: 0.5, pupilR: 0.2, look: { x: look, y: pinch ? 0.25 : 0.1 }, lid: Math.max(pinch ? 0.3 : carry ? 0.42 : 0.08, o.ice ? 0 : blinkAt(t, 2)), mad: pinch ? sd * -0.5 + 0.25 : carry ? sd * 0.2 : 0, lidCol: HC.body, line: HC.line, lw: lw * 0.75 });
+      { const ix = tx - sd * er * 0.75, ox = tx + sd * er * 0.95, by0 = ty - er * (1.32 + (mood < 0 ? 0.12 : 0)), m = mood * er * 0.42;
+        ctx.beginPath(); ctx.moveTo(ix, by0 + m); ctx.lineTo(ox, by0 - m); ctx.lineWidth = lw * 1.25; ctx.strokeStyle = HC.line; ctx.stroke(); }
     }
     // feelers
     ctx.beginPath(); for (const [a, L] of [[-0.5, 0.13], [-0.2, 0.11]]) { const w = Math.sin(t * 3.1 + a * 9) * 0.15; ctx.moveTo(cx + 0.1 * s, cy - 0.04 * s); ctx.quadraticCurveTo(cx + 0.1 * s + Math.cos(a) * L * s * 0.6, cy - 0.04 * s + Math.sin(a) * L * s * 0.9, cx + 0.1 * s + Math.cos(a + w) * L * s, cy - 0.04 * s + Math.sin(a + w) * L * s); }
@@ -117,11 +151,14 @@ export function drawHermit(ctx, x, y, s, t, o = {}) {
     const cara = () => { ctx.beginPath(); ctx.ellipse(cx, cy, 0.15 * s, 0.115 * s, -0.2, 0, TAU); };
     form(ctx, cara, { d: 0.035 * s, lo: HC.bodyLo, base: HC.body, hi: HC.bodyHi, hiK: 0.55, line: HC.line, lw, noWeight: true });
     ctx.beginPath();
-    if (pinch || flip) ctx.ellipse(cx + 0.085 * s, cy + 0.035 * s, 0.022 * s, 0.028 * s, 0, 0, TAU); else { ctx.moveTo(cx + 0.05 * s, cy + 0.03 * s); ctx.quadraticCurveTo(cx + 0.09 * s, cy + 0.06 * s, cx + 0.125 * s, cy + 0.02 * s); }
-    if (pinch || flip) { ctx.fillStyle = HC.mouth; ctx.fill(); } ctx.lineWidth = lw * 0.8; ctx.strokeStyle = HC.line; ctx.stroke();
+    const oMouth = pinch || flip || daze > 0.3;
+    if (oMouth) ctx.ellipse(cx + 0.085 * s, cy + 0.035 * s, 0.022 * s, (0.028 + (flip ? 0.008 * Math.sin(t * 11) : 0)) * s, 0, 0, TAU);
+    else if (carry) { ctx.moveTo(cx + 0.035 * s, cy + 0.02 * s); ctx.quadraticCurveTo(cx + 0.085 * s, cy + 0.08 * s, cx + 0.135 * s, cy + 0.005 * s); } // a smug grin
+    else { ctx.moveTo(cx + 0.05 * s, cy + 0.03 * s); ctx.quadraticCurveTo(cx + 0.09 * s, cy + 0.06 * s, cx + 0.125 * s, cy + 0.02 * s); }
+    if (oMouth) { ctx.fillStyle = HC.mouth; ctx.fill(); } ctx.lineWidth = lw * 0.8; ctx.strokeStyle = HC.line; ctx.stroke();
     // the great pincer, in front: up and chattering in the telegraph, hugging the egg when it carries one
     claw(ctx, HC, cx + 0.03 * s, cy + 0.07 * s, 0.16 * s, -0.1 - raise * 1.05 + lunge * 0.25, snapK, lw, false);
-  }
+  });
   ctx.restore();
 }
 // a claw: a two-part arm, a round hand, a fixed finger and a moving one. L = the hand's size; far = the small back claw
@@ -183,12 +220,15 @@ export function drawPuffer(ctx, x, y, s, t, o = {}) {
   ctx.save(); ctx.translate(-rx * 0.05, ry * 0.3); ctx.rotate(0.55 + Math.sin(t * 13) * 0.5);
   ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(-0.02 * s, 0.07 * s, -0.11 * s, 0.07 * s); ctx.quadraticCurveTo(-0.1 * s, 0.01 * s, 0, 0); ctx.closePath(); fillStroke(ctx, PF.fin, PF.line, lw * 0.85); ctx.restore();
   // face: big eyes (cross when it is swollen), a puckered mouth
-  const ex = rx * 0.5, ey = -ry * 0.3, er = (0.06 + 0.02 * sw) * s;
+  const ex = rx * 0.5, ey = -ry * 0.3, er = (0.088 - 0.008 * sw) * s; // a big eye even when small: the face reads at phone size
   const swelling = (o.sw ?? 0) > 0.05 && (o.sw ?? 0) < 0.95;
   if (o.stun) { ctx.beginPath(); ctx.arc(ex, ey, er, 0, TAU); fillStroke(ctx, PF.white, PF.line, lw * 0.9); spiralEye(ctx, ex, ey, er * 0.8, t, 1, PF.line); }
-  else eye(ctx, ex, ey, { r: er * (swelling ? 1.15 : 1), white: PF.white, iris: PF.eye, irisR: 0.55, pupilR: 0.22, look: { x: 0.5, y: 0.15 }, lid: Math.max(sw > 0.5 ? 0.22 : 0, o.ice ? 0 : blinkAt(t, 4)), mad: sw > 0.5 ? 0.35 : 0, lidCol: PF.body, line: PF.line, lw: lw * 0.85 });
+  else eye(ctx, ex, ey, { r: er * (swelling ? 1.4 : 1), white: PF.white, iris: PF.eye, irisR: swelling ? 0.42 : 0.55, pupilR: swelling ? 0.14 : 0.22, look: { x: 0.5, y: 0.15 }, lid: swelling ? 0 : Math.max(sw > 0.5 ? 0.22 : 0, o.ice ? 0 : blinkAt(t, 4)), mad: sw > 0.5 ? 0.35 : 0, lidCol: PF.body, line: PF.line, lw: lw * 0.85 }); // faces3: a startled pop as it swells
   if (sw > 0.5 && !o.stun) { ctx.strokeStyle = PF.line; ctx.lineWidth = lw * 1.2; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(ex - er * 1.1, ey - er * 1.5); ctx.lineTo(ex + er * 0.9, ey - er * 1.0); ctx.stroke(); }
-  ctx.beginPath(); ctx.ellipse(rx * 0.97, ry * 0.14, (0.032 + (swelling ? 0.012 : 0)) * s, (0.026 + 0.016 * sw + (swelling ? 0.012 : 0)) * s, 0, 0, TAU); fillStroke(ctx, PF.mouth, PF.line, lw * 0.8);
+  if (sw < 0.3 && !swelling) { // small: a fat pout, two lips pushed out, smacking now and then
+    const pk = 1 + 0.18 * Math.max(0, Math.sin(t * 2.3)), mx = rx * 1.0, my = ry * 0.2;
+    for (const d of [-1, 1]) { ctx.beginPath(); ctx.ellipse(mx + 0.012 * s * pk, my + d * 0.018 * s, 0.03 * s * pk, 0.019 * s, d * 0.25, 0, TAU); fillStroke(ctx, PF.mouth, PF.line, lw * 0.8); }
+  } else { ctx.beginPath(); ctx.ellipse(rx * 0.97, ry * 0.14, (0.032 + (swelling ? 0.012 : 0)) * s, (0.026 + 0.016 * sw + (swelling ? 0.012 : 0)) * s, 0, 0, TAU); fillStroke(ctx, PF.mouth, PF.line, lw * 0.8); }
   ctx.beginPath(); ctx.arc(rx * 0.97, ry * 0.14, 0.012 * s, 0, TAU); ctx.fillStyle = '#5a1a10'; ctx.fill();
   ctx.restore();
 }
@@ -206,15 +246,18 @@ export function drawJelly(ctx, x, y, s, t, o = {}) {
   // trailing tentacles (they lag the bell's pulse); they crackle yellow when it stings
   for (let i = 0; i < 6; i++) {
     const x0 = (-0.75 + i * 0.3) * bw, len = (0.55 + 0.2 * hash(i + 3)) * s * (o.stun ? 0.8 : 1);
-    ctx.beginPath(); ctx.moveTo(x0, bh * 0.15);
-    for (let j = 1; j <= 8; j++) { const q = j / 8; ctx.lineTo(x0 * (1 - 0.25 * q) + Math.sin(t * 3 - q * 5 + i) * 0.05 * s * q, bh * 0.15 + q * len); }
+    // (2026-11-19, mykee: stiff and boxy) a smooth curve with a travelling wave that grows toward the tip
+    ctx.beginPath(); let px = x0, py = bh * 0.15; ctx.moveTo(px, py);
+    for (let j = 1; j <= 12; j++) { const q = j / 12, nx = x0 * (1 - 0.25 * q) + (Math.sin(t * 3 - q * 6 + i * 1.3) * 0.09 + Math.sin(t * 1.7 - q * 3 + i) * 0.04) * s * q, ny = bh * 0.15 + q * len * (1 - 0.06 * Math.sin(t * 2 + i)); ctx.quadraticCurveTo(px, py, (px + nx) / 2, (py + ny) / 2); px = nx; py = ny; }
+    ctx.lineTo(px, py);
     ctx.strokeStyle = JF.line; ctx.lineWidth = lw * 1.9; ctx.stroke();
     ctx.strokeStyle = o.sting > 0 ? JF.sting : JF.tent; ctx.lineWidth = lw * 0.9; ctx.stroke();
   }
   // frilly oral arms
   for (const sx of [-1, 1]) {
-    ctx.beginPath(); ctx.moveTo(sx * bw * 0.18, bh * 0.1);
-    for (let j = 1; j <= 6; j++) { const q = j / 6; ctx.lineTo(sx * (bw * 0.18 + Math.sin(t * 2.4 + q * 4 + sx) * 0.06 * s), bh * 0.1 + q * 0.42 * s); }
+    ctx.beginPath(); let px = sx * bw * 0.18, py = bh * 0.1; ctx.moveTo(px, py);
+    for (let j = 1; j <= 10; j++) { const q = j / 10, nx = sx * (bw * 0.18 + Math.sin(t * 2.4 - q * 5 + sx) * 0.09 * s * (0.4 + q)), ny = bh * 0.1 + q * 0.42 * s; ctx.quadraticCurveTo(px, py, (px + nx) / 2, (py + ny) / 2); px = nx; py = ny; }
+    ctx.lineTo(px, py);
     ctx.strokeStyle = JF.line; ctx.lineWidth = lw * 4.2; ctx.stroke();
     ctx.strokeStyle = JF.arm; ctx.lineWidth = lw * 2.4; ctx.stroke();
   }
@@ -239,7 +282,8 @@ export function drawJelly(ctx, x, y, s, t, o = {}) {
   // a little face
   const fy = -bh * 0.02;
   if (o.stun) { spiralEye(ctx, -bw * 0.3, fy, 0.04 * s, t, 1, JF.line); spiralEye(ctx, bw * 0.3, fy, 0.04 * s, t, -1, JF.line); }
-  else { const bl = o.ice ? 0 : blinkAt(t, 9); for (const sx of [-1, 1]) { ctx.fillStyle = JF.line; ctx.beginPath(); ctx.ellipse(sx * bw * 0.3, fy, 0.032 * s, 0.044 * s * (1 - bl * 0.85), 0, 0, TAU); ctx.fill(); if (bl < 0.5) { ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(sx * bw * 0.3 - 0.01 * s, fy - 0.014 * s, 0.011 * s, 0, TAU); ctx.fill(); } }
+  else if (o.sting > 0) { ctx.strokeStyle = JF.line; ctx.lineWidth = lw * 1.2; ctx.lineCap = 'round'; for (const sx of [-1, 1]) { const ex = sx * bw * 0.3, w = 0.034 * s; ctx.beginPath(); ctx.moveTo(ex - sx * w, fy - w); ctx.lineTo(ex + sx * w * 0.6, fy); ctx.lineTo(ex - sx * w, fy + w); ctx.stroke(); } } // faces3: a gleeful > < as it stings
+  else { const bl = o.ice ? 0 : blinkAt(t, 9); for (const sx of [-1, 1]) { ctx.fillStyle = JF.line; ctx.beginPath(); ctx.ellipse(sx * bw * 0.3, fy, 0.04 * s, 0.055 * s * (1 - bl * 0.85), 0, 0, TAU); ctx.fill(); if (bl < 0.5) { ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(sx * bw * 0.3 - 0.01 * s, fy - 0.014 * s, 0.011 * s, 0, TAU); ctx.fill(); } }
     if (!(o.sting > 0)) { ctx.strokeStyle = JF.line; ctx.lineWidth = lw; ctx.beginPath(); ctx.moveTo(-bw * 0.1, fy + 0.045 * s); ctx.quadraticCurveTo(0, fy + 0.085 * s, bw * 0.1, fy + 0.045 * s); ctx.stroke(); } }
   if (o.sting > 0) { ctx.strokeStyle = JF.line; ctx.lineWidth = lw; ctx.beginPath(); ctx.moveTo(-bw * 0.15, fy + 0.07 * s); ctx.lineTo(0, fy + 0.04 * s); ctx.lineTo(bw * 0.15, fy + 0.07 * s); ctx.stroke(); }
   ctx.restore();
@@ -263,12 +307,16 @@ const wantOf = (c) => (c.fz > 0 ? { k: 'ice', left: c.fz } : c.stn > 0 || c.zp >
 function hermitFrame(sim, H, t, k) {
   const fl = sim.reefFloor(H.ch), x = fl * Math.cos(H.a), y = fl * Math.sin(H.a);
   const rot = Math.atan2(Math.cos(H.a), -Math.sin(H.a)); // after ctx.rotate(-rot) in the y-down px space, local -y (up) points to the vault centre
-  const pose = H.ph === 'flip' ? 'flip' : H.ph === 'pinch' ? 'pinch' : H.ph === 'carry' ? 'carry' : H.ph === 'in' ? 'in' : 'walk';
-  const u = H.dur > 0 ? clamp(1 - H.t / H.dur, 0, 1) : 0;
+  const enter = H.ph === 'in' || H.ph === 'wait';
+  const pose = H.ph === 'flip' ? 'flip' : H.ph === 'pinch' ? 'pinch' : H.ph === 'carry' ? 'carry' : enter ? 'in' : H.ph === 'stalk' ? 'stalk' : 'walk';
+  const u = enter ? clamp(1 - (H.ph === 'wait' ? H.t + HERMIT.in : H.t) / HERMIT_ENTER, 0, 1) : H.dur > 0 ? clamp(1 - H.t / H.dur, 0, 1) : 0;
   // the face flips so it always reads upright on screen (as the thieves do): +x along the floor
   const sx = -Math.sin(H.a) * H.face; // screen x direction of its facing (rough)
   void sx;
-  return { x, y, rot, o: { face: H.face, walk: H.odo, pose, u, stun: H.ph === 'flip' && H.k !== 'sting' ? 1 : H.zp > 0 ? 1 : 0, alpha: 1 } };
+  // the flip rolls over in 0.22 s and back in the last 0.35 s of it; the second after it (rest 1 s) it shakes off the daze
+  const flipK = H.ph === 'flip' ? Math.min(clamp((H.dur - H.t) / 0.22, 0, 1), clamp(H.t / 0.35, 0, 1)) : 0;
+  const daze = H.ph === 'rest' && H.dur <= 1.01 ? clamp(H.t / H.dur, 0, 1) : 0;
+  return { x, y, rot, o: { face: H.face, walk: H.odo, pose, u, flipK, daze, stun: (H.ph === 'flip' && H.k !== 'sting' && flipK > 0.5) || daze > 0.4 ? 1 : H.zp > 0 ? 1 : 0, alpha: 1 } };
 }
 // the frozen look: the creature in the ice palette with crisp shards stuck on it (as the King Crab), shaking as it cracks;
 // shards drop off as it thaws. A zap keeps status.js's arcs. sh = { x, y, r, seed }: where the shards sit (local px).
@@ -298,7 +346,7 @@ function drawHermitAt(ctx, sim, H, t, k, part) {
     const box = { x0: -0.6 * s, y0: -0.75 * s, x1: 0.6 * s, y1: 0.1 * s };
     if (st && st.k === 'stun' && part !== 'all') draw(ctx, false);
     else withStatus(ctx, st, box, k, { x: -0.05 * s, y: -0.3 * s, r: 0.3 * s, seed: 3 + H.id }, draw, part !== 'back');
-    if (part !== 'back' && F.o.pose === 'flip' && !(H.fz > 0)) dizzyStars(ctx, 0.05 * s, -0.62 * s, 0.22 * s, 0.07 * s, t, { n: 3, size: Math.max(4, s * 0.08) });
+    if (part !== 'back' && F.o.pose === 'flip' && F.o.flipK > 0.6 && !(H.fz > 0)) dizzyStars(ctx, 0.05 * s, -0.62 * s, 0.22 * s, 0.07 * s, t, { n: 3, size: Math.max(4, s * 0.08) });
   });
 }
 function pufferFrame(sim, P) {
@@ -346,7 +394,7 @@ export function drawReefUnder(ctx, sim, t, k, theme) {
       if (J.stn > 0 && !(J.fz > 0)) dizzyStars(ctx, 0, -0.42 * js, 0.2 * js, 0.06 * js, t, { n: 3, size: Math.max(4, js * 0.08) });
     });
   }
-  for (const H of sim.hermits) if (H.ph !== 'wait') drawHermitAt(ctx, sim, H, t, k, H.eid ? 'back' : 'all');
+  for (const H of sim.hermits) if (H.ph !== 'wait' || H.t < HERMIT.roll) drawHermitAt(ctx, sim, H, t, k, H.eid ? 'back' : 'all');
 }
 // after the eggs: a hermit crab's claws over the egg it holds, the King Crab's claws over theirs, the silt cloud
 export function drawReefOver(ctx, sim, t, k) {
@@ -449,13 +497,10 @@ export function drawSurface(ctx, sim, theme, t, k, saved) {
   ctx.fillStyle = '#e8fbff';
   for (let i = 0; i < 5; i++) { const x = -6 + i * 3 + Math.sin(t * 0.3 + i) * 0.4; ctx.beginPath(); ctx.moveTo(x - 0.3, y0); ctx.lineTo(x + 0.3, y0); ctx.lineTo(x + 1.6, y0 - 7); ctx.lineTo(x + 0.4, y0 - 7); ctx.closePath(); ctx.fill(); }
   ctx.globalAlpha = 1;
-  // the basket: an upside-down wicker dome under the boat; the eggs float up into it
+  // the basket: an upside-down wicker dome under the boat; the eggs float up into it (the real eggs, upside down)
+  if (saved > 0) { ctx.save(); ctx.translate(n.x, n.y); ctx.scale(1, -1); drawHomeEggs(ctx, sim, saved, null, 0, t, k, 0.36); ctx.restore(); }
   pxSpace(ctx, n.x, n.y, k, () => {
     const W = w * k, H = 0.62 * k, lw = Math.max(1.2, 0.04 * k);
-    for (let i = 0; i < Math.min(4, saved); i++) { // saved eggs tucked up in it
-      ctx.save(); ctx.translate((-0.33 + i * 0.22) * k, (0.34 + (i % 2) * 0.04) * k); ctx.rotate((i - 1.5) * 0.25 + Math.PI);
-      ctx.beginPath(); ctx.ellipse(0, 0, EGG_W * 0.38 * k, EGG_H * 0.38 * k, 0, 0, TAU); fillStroke(ctx, '#f7ecd6', '#5a4028', lw * 0.7); ctx.restore();
-    }
     ctx.beginPath(); ctx.moveTo(-W - 0.1 * k, 0.05 * k); ctx.quadraticCurveTo(-W, H, 0, H); ctx.quadraticCurveTo(W, H, W + 0.1 * k, 0.05 * k);
     ctx.lineTo(W - 0.06 * k, 0.05 * k); ctx.quadraticCurveTo(W * 0.9, H * 0.78, 0, H * 0.8); ctx.quadraticCurveTo(-W * 0.9, H * 0.78, -W + 0.06 * k, 0.05 * k); ctx.closePath();
     fillStroke(ctx, '#c99a4a', '#4a2e10', lw);
@@ -505,6 +550,8 @@ export function drawRiseGuide(ctx, sim, t) {
 export function reefEvent(ev, fx, U) {
   const P = U.popup, A = U.audio, once = U.once;
   switch (ev.type) {
+    case 'hermitRoll': fx.smoke && fx.smoke(ev.x, ev.y, 2, 'rgba(210,240,255,0.35)'); break;
+    case 'hermitPop': A.play('pop', { vol: 0.55, pitch: 1.25 }); fx.sparkle(ev.x, ev.y, 7, '#ffe9a8'); break;
     case 'hermitIn': once('hermit', 'A hermit crab! It tucks eggs in its shell. Bump an egg into it, or turn a gap to it.'); break;
     case 'hermitWarn': A.play('steel_clang', { vol: 0.25, pitch: 1.9 }); break;
     case 'hermitGrab': A.play('pop', { vol: 0.5, pitch: 0.7 }); P(ev.x, ev.y + 0.5, 'Tucked!', { color: '#ffb07a', size: 17, life: 0.9 }); break;

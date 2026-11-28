@@ -2,6 +2,8 @@
 // One light, top-left. Every body gets FORM (lo band bottom-right, base, hi band top-left: crisp cel bands that follow the
 // silhouette), a weighted ink line (heavier on the shadow side), tapered limbs that bend at real joints, and a glossy eye
 // with a lid. All of it is plain path work: no shadowBlur, no filters, no per-frame gradients.
+import { PERF } from '../perf.js';
+import { freeCanvas } from './cvfree.js';
 const TAU = Math.PI * 2;
 export const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 export const lerp = (a, b, k) => a + (b - a) * k;
@@ -31,15 +33,73 @@ export function spline(ctx, P, closed = true, tension = 0.5, move = true) {
 // FORM: fill a silhouette with three crisp light bands and ink it. path() must build the whole path (beginPath included)
 // and be callable again under a translation. d = band size (px in the current space). o: { lo, base, hi, line, lw, hiK
 // (0 = no light band), inner(ctx) drawn clipped to the shape before the ink (markings, belly) }
+//
+// 2026-11-20 speed (p87, mykee: stutters with many villains): a FORM costs two clips, three fills and one or two strokes
+// every frame, and a non-rectangular clip is the most expensive thing a phone's graphics chip does for a canvas. When the
+// shape does not change in its own frame (a chick's body, a wing, a tail feather: only the transform moves them), the caller
+// passes o.key (a string naming the shape: its size and anything that bends it) and o.box [x0, y0, x1, y1] (the path's
+// bounds in the current units). The finished form is then painted once onto a small picture and drawn with one drawImage
+// under the current transform. path(c) and inner(c) must draw on the context they are given (the picture, when baking).
+// It bakes on the second frame it sees the same key (a shape that bends every frame never bakes), never under a fade
+// (globalAlpha < 1) or another blend mode, and the cache is bounded (count and pixels; oldest out first).
+const BK = new Map(), SEEN = new Map();
+let bkPx = 0;
+export const formStats = { bakes: 0, hits: 0, on: true };
+const BK_MAX = 220, BK_PX = 5e6; // at most ~20 MB of pictures (an older phone has little graphics memory to spare)
+// bake(ctx, key, x0, y0, x1, y1, paint): a still part of a creature as a cached picture. The box is in the current units;
+// paint(c) draws the part on c in those units. Drawn with one drawImage under the current transform; returns false (the
+// caller draws it live) on the first sighting of a key, under a fade or another blend mode, or when it would be too big.
+// The picture is made at a size step at or above the drawn size (12% steps), so a slow zoom repaints it only now and then.
+export function bake(ctx, key, x0, y0, x1, y1, paint) {
+  if (!formStats.on || typeof document === 'undefined' || !ctx.getTransform || ctx.globalAlpha < 1 || ctx.globalCompositeOperation !== 'source-over') return false;
+  const m = ctx.getTransform(), sc = Math.max(Math.hypot(m.a, m.b), Math.hypot(m.c, m.d));
+  if (!(sc > 0.05)) return false;
+  const sq = Math.pow(1.12, Math.ceil(Math.log(sc) / Math.log(1.12) - 1e-9));
+  const k = key + '|' + sq.toFixed(3);
+  let E = BK.get(k);
+  if (!E) {
+    const n = (SEEN.get(k) || 0) + 1;
+    if (n < 2) { if (SEEN.size > 600) SEEN.clear(); SEEN.set(k, n); return false; }
+    SEEN.delete(k);
+    const pad = 2 / sq, bx = x0 - pad, by = y0 - pad, w = x1 - x0 + 2 * pad, h = y1 - y0 + 2 * pad;
+    const W = Math.ceil(w * sq), H = Math.ceil(h * sq);
+    if (!(W >= 2 && H >= 2) || W > 640 || H > 640) return false;
+    const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+    const c = cv.getContext('2d');
+    if (!c) return false;
+    c.setTransform(W / w, 0, 0, H / h, -bx * W / w, -by * H / h);
+    c.lineCap = ctx.lineCap; c.lineJoin = ctx.lineJoin; c.lineWidth = ctx.lineWidth; c.fillStyle = ctx.fillStyle; c.strokeStyle = ctx.strokeStyle; c.miterLimit = ctx.miterLimit;
+    paint(c);
+    E = { cv, x0: bx, y0: by, w, h, px: W * H };
+    BK.set(k, E); bkPx += E.px; formStats.bakes++;
+    while (BK.size > BK_MAX || bkPx > BK_PX) { const [k0, e0] = BK.entries().next().value; BK.delete(k0); bkPx -= e0.px; freeCanvas(e0.cv); }
+  } else { BK.delete(k); BK.set(k, E); formStats.hits++; } // keep the ones in use at the young end
+  ctx.drawImage(E.cv, E.x0, E.y0, E.w, E.h);
+  return true;
+}
+function formBaked(ctx, path, o) {
+  const lw = o.lw || 0, b = o.box, pad = lw * 1.3;
+  const key = 'F' + o.key + '|' + o.lo + o.base + o.hi + o.line + '|' + lw.toFixed(2) + '|' + (+o.d).toFixed(2) + '|' + (o.hiK ?? '') + (o.noWeight ? 'n' : '');
+  if (!bake(ctx, key, b[0] - pad, b[1] - pad, b[2] + pad, b[3] + pad, (c) => formDraw(c, path, o))) return false;
+  if (lw > 0 && o.line) { ctx.lineWidth = lw; ctx.strokeStyle = o.line; ctx.lineJoin = 'round'; path(ctx); } // leave the context as drawing it would (ink state, the outline as the current path)
+  return true;
+}
 export function form(ctx, path, o) {
-  const d = o.d, lw = o.lw || 0;
+  if (o.key && o.box && formBaked(ctx, path, o)) return;
+  formDraw(ctx, path, o);
+}
+function formDraw(ctx, path0, o) {
+  const d = o.d, lw = o.lw || 0, path = () => path0(ctx);
   if (lw > 0 && o.line && !o.noWeight) { // the weighted line: a second, offset ink pass under the shape (thicker bottom-right)
     ctx.save(); ctx.translate(lw * 0.3, lw * 0.45); path(); ctx.lineWidth = lw * 1.5; ctx.strokeStyle = o.line; ctx.lineJoin = 'round'; ctx.stroke(); ctx.restore();
   }
+  // Low (p87): a form that is drawn live every frame (no key) has no highlight band: one clip and one fill fewer. Keyed
+  // forms are baked pictures and keep all three bands.
+  const hiB = o.hi && o.hiK !== 0 && !(PERF.low && !o.key);
   ctx.save();
   path(); ctx.fillStyle = o.lo; ctx.fill(); ctx.clip();
-  ctx.save(); ctx.translate(-d * 0.55, -d); path(); ctx.fillStyle = o.hi && o.hiK !== 0 ? o.hi : o.base; ctx.fill();
-  if (o.hi && o.hiK !== 0) { ctx.clip(); const h = d * (o.hiK || 0.8); ctx.translate(h * 0.55, h); path(); ctx.fillStyle = o.base; ctx.fill(); }
+  ctx.save(); ctx.translate(-d * 0.55, -d); path(); ctx.fillStyle = hiB ? o.hi : o.base; ctx.fill();
+  if (hiB) { ctx.clip(); const h = d * (o.hiK || 0.8); ctx.translate(h * 0.55, h); path(); ctx.fillStyle = o.base; ctx.fill(); }
   ctx.restore();
   if (o.inner) o.inner(ctx);
   ctx.restore();

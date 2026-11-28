@@ -3,6 +3,11 @@
 // Static scenery is prerendered into up to 3 parallax layers in resize(); draw() only blits
 // them plus a handful of animated elements. World camera is y-up (planck), meters.
 
+import { freeCanvas } from './render/cvfree.js'; // 0.8.10: a backdrop gives its layers back when it is rebuilt or dropped
+import { PERF } from './perf.js'; // 2026-11-19 graphics quality: Low flattens the layers, Medium/Low drop the light shafts
+import { lookOf } from './road.js'; // 0.8.17: sixty levels; the backdrop look of a level that moved
+import { FARM_ART, setSceneCalm } from './render/farmscene.js'; // 2026-11-20: the Farm's five landmark scenes (coop .. redbarn)
+export { setSceneCalm };
 
 // ---------------------------------------------------------------- math / rng / color
 const TAU = Math.PI * 2;
@@ -210,7 +215,7 @@ ART.farm = {
   atmo: { haze: ['#e6f5ff', 0.4], bloom: ['#ffffff', 0.4, 10], key: ['#fff6c0', 0.2], shadow: ['#0c3a2a', 0.22], shafts: ['#fff8d8', 0.09] },
   frame: { kit: 'leafy', cols: ['#3a2a1a', '#1c5a2a', '#2c7a34', '#4c9c40'], flowers: ['#ffffff', '#ffe066', '#ff9ec7'], tone: ['#0a2a1c', 0.22] },
   stage: { flowers: ['#ffffff', '#ffe066', '#ff9ec7', '#ffffff'] },
-  variants: [null, null, null, null, 'golden'],
+  variants: [null, null, null, null, 'golden', 'moon'], // 0.8.17: the sixth, Midnight Raid (road.js lookOf): the farm by moonlight
   veil: ['#3a8ad0', 0.16],
   prep(S) {
     const { u, R, dpr } = S;
@@ -723,7 +728,7 @@ function gearSprite(dpr, r, teeth, col, dark, light) {
   });
 }
 function spin(ctx, sp, x, y, a) { ctx.save(); ctx.translate(x, y); ctx.rotate(a); ctx.drawImage(sp.cv, -sp.w / 2, -sp.h / 2, sp.w, sp.h); ctx.restore(); }
-function flame(ctx, x, y, s, t, k) {
+export function flame(ctx, x, y, s, t, k) { // 0.8.12: also the torch and brazier fire on the map (mapvolcano.js, mapthieves.js)
   const f = 1 + 0.18 * Math.sin(t * 13 + k) + 0.1 * Math.sin(t * 23 + k * 2), sw = Math.sin(t * 7 + k) * 0.15 * s;
   const tear = (w, h, col) => { ctx.beginPath(); ctx.moveTo(x - w, y); ctx.quadraticCurveTo(x - w, y - h * 0.5, x + sw, y - h); ctx.quadraticCurveTo(x + w, y - h * 0.5, x + w, y); ctx.quadraticCurveTo(x, y + w * 0.8, x - w, y); ctx.fillStyle = col; ctx.fill(); };
   tear(s * 0.55, s * 2 * f, '#ff7a1a'); tear(s * 0.36, s * 1.4 * f, '#ffc23a'); tear(s * 0.18, s * 0.8 * f, '#fff3c0');
@@ -1467,6 +1472,8 @@ ART.bayou = {
   },
 };
 
+Object.assign(ART, FARM_ART); // the Farm's landmark scenes paint in src/render/farmscene.js
+
 // ---------------------------------------------------------------- theme table
 const P = (skyTop, skyBottom, text, plate, accent, ring, thorn, nestStraw, ground, groundTop) => ({ skyTop, skyBottom, text, plate, accent, ring, thorn, nestStraw, ground, groundTop });
 const RING = {
@@ -1488,28 +1495,34 @@ const RING = {
   tech: { base: '#4b6670', light: '#8fb2bb', dark: '#253740' },
 };
 export const THEMES = [
-  { id: 'farm', name: 'Sunny Farm', palette: P('#3f9fe6', '#dff3fb', '#ffffff', 'rgba(24,58,92,0.55)', '#ffcf3a', RING.wood, '#4a3426', '#e7bf63', '#6b4a2b', '#5cb43c'), material: 'wood', ground: 'grass', ambient: 'pollen', music: { root: 'C', scale: 'major', bpm: 112, mood: 'cheerful morning' } },
-  { id: 'barn', name: 'Hay Barn', palette: P('#3c2416', '#6b4126', '#fff4e0', 'rgba(36,18,8,0.6)', '#ffb54d', RING.wood, '#3a2a1e', '#e9c46a', '#5e3d1f', '#d9b04f'), material: 'wood', ground: 'dirt', ambient: 'dust', music: { root: 'G', scale: 'major', bpm: 100, mood: 'cozy folk' } },
-  { id: 'orchard', name: 'Apple Orchard', palette: P('#5aa5dc', '#fbe1aa', '#ffffff', 'rgba(52,62,30,0.55)', '#ff5a44', RING.wood, '#4a2f20', '#e2b862', '#6a4a2c', '#6fb443'), material: 'wood', ground: 'grass', ambient: 'leaves', music: { root: 'F', scale: 'major', bpm: 104, mood: 'lazy afternoon' } },
-  { id: 'pumpkin', name: 'Pumpkin Patch', palette: P('#3a2a5e', '#ffc35c', '#fff1de', 'rgba(42,18,36,0.6)', '#ff8a2a', RING.darkwood, '#2a1a12', '#d9a24e', '#3a2a1e', '#5a4a2a'), material: 'wood', ground: 'dirt', ambient: 'leaves', music: { root: 'D', scale: 'dorian', bpm: 96, mood: 'playful spooky harvest' } },
-  { id: 'bramble', name: 'Bramble Woods', palette: P('#9ac97e', '#1d3c28', '#f2ffe6', 'rgba(10,30,16,0.6)', '#b8e05a', RING.vine, '#5a3c2e', '#c8a456', '#3a2a1c', '#2f6a30'), material: 'vine', ground: 'dirt', ambient: 'leaves', music: { root: 'E', scale: 'minor', bpm: 98, mood: 'mysterious forest' } },
-  { id: 'mushroom', name: 'Mushroom Glade', palette: P('#0d0b2a', '#2d5a73', '#f4ecff', 'rgba(12,8,36,0.6)', '#ff6fb5', RING.mushroom, '#3b2d5a', '#c9a35e', '#1c1a33', '#2c3f6e'), material: 'mushroom', ground: 'grass', ambient: 'fireflies', music: { root: 'A', scale: 'lydian', bpm: 84, mood: 'dreamy night' } },
-  { id: 'crystal', name: 'Crystal Cave', palette: P('#120a26', '#2a1a4e', '#eefcff', 'rgba(14,6,30,0.62)', '#3ee6d6', RING.glass, '#6b33b0', '#c9a35e', '#24173f', '#4a3480'), material: 'glass', ground: 'stone', ambient: 'sparkles', music: { root: 'B', scale: 'lydian', bpm: 90, mood: 'shimmering wonder' } },
-  { id: 'frozen', name: 'Frozen Lake', palette: P('#7fb6e3', '#eef8fc', '#ffffff', 'rgba(26,56,92,0.55)', '#7fe0ff', RING.ice, '#2f5266', '#d8b56a', '#86bcd9', '#e9f6fc'), material: 'ice', ground: 'ice', ambient: 'snow', music: { root: 'E', scale: 'pentatonic', bpm: 92, mood: 'crisp and calm' } },
-  { id: 'blizzard', name: 'Pine Blizzard', palette: P('#5b6c86', '#b8c4d2', '#ffffff', 'rgba(26,36,52,0.6)', '#9fd0ff', RING.stone, '#2c3440', '#cfae6a', '#8a9ab0', '#f2f5f9'), material: 'stone', ground: 'snow', ambient: 'blizzard', music: { root: 'C', scale: 'minor', bpm: 120, mood: 'driving storm' } },
-  { id: 'dunes', name: 'Desert Dunes', palette: P('#2f86c9', '#ffd98e', '#ffffff', 'rgba(92,44,18,0.55)', '#ffb02e', RING.sandstone, '#5a3a20', '#e0b45a', '#c8783a', '#f2b96a'), material: 'stone', ground: 'sand', ambient: 'sand', music: { root: 'D', scale: 'phrygian', bpm: 108, mood: 'hot exotic' } },
-  { id: 'tomb', name: 'Pyramid Tomb', palette: P('#2c1a0e', '#4e321b', '#fff1d6', 'rgba(30,16,6,0.62)', '#ffc23a', RING.sandstone, '#2a180a', '#d9b25a', '#4a3018', '#8a6a3a'), material: 'stone', ground: 'stone', ambient: 'dust', music: { root: 'E', scale: 'phrygian', bpm: 92, mood: 'ancient mystery' } },
-  { id: 'jungle', name: 'Jungle Ruins', palette: P('#c9e3a0', '#1d4a30', '#f2ffe8', 'rgba(8,34,18,0.6)', '#ffd23f', RING.vine, '#2a3a1a', '#cfa957', '#3a2a18', '#3f8a38'), material: 'vine', ground: 'grass', ambient: 'leaves', music: { root: 'A', scale: 'dorian', bpm: 116, mood: 'adventurous drums' } },
-  { id: 'reef', name: 'Coral Reef', palette: P('#3fd0e0', '#0a3f6e', '#ffffff', 'rgba(4,36,66,0.58)', '#ff7a5a', RING.coral, '#3a1a3a', '#d9c07a', '#a88e5e', '#e0cc9a'), material: 'coral', ground: 'sand', ambient: 'bubbles', music: { root: 'F', scale: 'lydian', bpm: 88, mood: 'floating calm' } },
-  { id: 'cove', name: 'Pirate Cove', palette: P('#070f2a', '#3a5a92', '#fff6dc', 'rgba(6,12,34,0.62)', '#ffd27a', RING.darkwood, '#1a1424', '#c9a35e', '#4a4a6a', '#8a8aa8'), material: 'wood', ground: 'sand', ambient: 'fog', music: { root: 'D', scale: 'minor', bpm: 104, mood: 'sea shanty at night' } },
-  { id: 'storm', name: 'Storm Peaks', palette: P('#14172a', '#4c5578', '#ffffff', 'rgba(12,14,28,0.6)', '#ffe14d', RING.cloud, '#2a2e44', '#cfae6a', '#8a93b4', '#e6eaf4'), material: 'cloud', ground: 'cloud', ambient: 'rain', music: { root: 'B', scale: 'minor', bpm: 132, mood: 'tense and electric' } },
-  { id: 'clock', name: 'Clocktower', palette: P('#231d44', '#f6b064', '#fff2dc', 'rgba(26,16,36,0.6)', '#ffc46a', RING.brass, '#2a1c10', '#d9b25a', '#3a2e3a', '#6a5a66'), material: 'metal', ground: 'stone', ambient: 'dust', music: { root: 'G', scale: 'minor', bpm: 120, mood: 'ticking clockwork' } },
-  { id: 'haunted', name: 'Haunted Graveyard', palette: P('#120a26', '#6a4a8a', '#f4ecff', 'rgba(16,8,30,0.62)', '#b8ff6a', RING.bone, '#1a1028', '#b8a070', '#2a1c3a', '#4a3a5a'), material: 'bone', ground: 'dirt', ambient: 'fog', music: { root: 'C', scale: 'phrygian', bpm: 90, mood: 'spooky waltz' } },
-  { id: 'volcano', name: 'Volcano', palette: P('#0c0a0c', '#5a3a2c', '#fff0e0', 'rgba(24,4,2,0.62)', '#ff7a1a', RING.obsidian, '#ff5a1a', '#c9984e', '#5a0e0c', '#ff7a1a'), material: 'obsidian', ground: 'lava', ambient: 'embers', music: { root: 'F', scale: 'phrygian', bpm: 138, mood: 'urgent heat' } },
-  { id: 'dragon', name: "Dragon's Lair", palette: P('#0b090b', '#33231b', '#fff2d6', 'rgba(20,10,4,0.62)', '#ffd75a', RING.gold, '#1e120c', '#c9984e', '#6a4416', '#ffd75a'), material: 'gold', ground: 'gold', ambient: 'embers', music: { root: 'D', scale: 'minor', bpm: 100, mood: 'epic tiptoe' } },
-  { id: 'vault', name: "The Thieves' Vault", palette: P('#0a1a22', '#12303a', '#f2fdff', 'rgba(4,14,18,0.62)', '#ff9a3a', RING.tech, '#ff8a2a', '#d9b25a', '#1f3a42', '#4f8a94'), material: 'metal', ground: 'stone', ambient: 'sparkles', music: { root: 'A', scale: 'minor', bpm: 128, mood: 'heist finale' } },
-  { id: 'lab', name: 'Shape Lab', palette: P('#0d1a2e', '#22344a', '#fff4e0', 'rgba(8,14,28,0.62)', '#ffb84d', RING.brass, '#2a1c10', '#d9b25a', '#4a2e18', '#a8744a'), material: 'metal', ground: 'wood', ambient: 'dust', music: { root: 'D', scale: 'dorian', bpm: 124, mood: 'tinkering clockwork finale' } },
-  { id: 'bayou', name: 'Gator Bayou', palette: P('#1e1638', '#f09a52', '#fff4e6', 'rgba(20,14,30,0.6)', '#ffb04a', RING.darkwood, '#2a1a12', '#d9b25a', '#2e2a1a', '#56783a'), material: 'wood', ground: 'grass', ambient: 'fireflies', music: { root: 'E', scale: 'dorian', bpm: 96, mood: 'swampy blues at dusk' } },
+  { id: 'farm', name: 'Sunny Farm', palette: P('#3f9fe6', '#dff3fb', '#ffffff', 'rgba(24,58,92,0.55)', '#ffcf3a', RING.wood, '#4a3426', '#e7bf63', '#6b4a2b', '#5cb43c'), material: 'wood', ground: 'grass', ambient: 'pollen', music: { tune: 'strut' } },
+  { id: 'barn', name: 'Hay Barn', palette: P('#3c2416', '#6b4126', '#fff4e0', 'rgba(36,18,8,0.6)', '#ffb54d', RING.wood, '#3a2a1e', '#e9c46a', '#5e3d1f', '#d9b04f'), material: 'wood', ground: 'dirt', ambient: 'dust', music: { tune: 'barn' } },
+  { id: 'orchard', name: 'Apple Orchard', palette: P('#5aa5dc', '#fbe1aa', '#ffffff', 'rgba(52,62,30,0.55)', '#ff5a44', RING.wood, '#4a2f20', '#e2b862', '#6a4a2c', '#6fb443'), material: 'wood', ground: 'grass', ambient: 'leaves', music: { tune: 'orchard' } },
+  { id: 'pumpkin', name: 'Pumpkin Patch', palette: P('#3a2a5e', '#ffc35c', '#fff1de', 'rgba(42,18,36,0.6)', '#ff8a2a', RING.darkwood, '#2a1a12', '#d9a24e', '#3a2a1e', '#5a4a2a'), material: 'wood', ground: 'dirt', ambient: 'leaves', music: { tune: 'pumpkin' } },
+  { id: 'bramble', name: 'Bramble Woods', palette: P('#9ac97e', '#1d3c28', '#f2ffe6', 'rgba(10,30,16,0.6)', '#b8e05a', RING.vine, '#5a3c2e', '#c8a456', '#3a2a1c', '#2f6a30'), material: 'vine', ground: 'dirt', ambient: 'leaves', music: { tune: 'bramble' } },
+  { id: 'mushroom', name: 'Mushroom Glade', palette: P('#0d0b2a', '#2d5a73', '#f4ecff', 'rgba(12,8,36,0.6)', '#ff6fb5', RING.mushroom, '#3b2d5a', '#c9a35e', '#1c1a33', '#2c3f6e'), material: 'mushroom', ground: 'grass', ambient: 'fireflies', music: { tune: 'mushroom' } },
+  { id: 'crystal', name: 'Crystal Cave', palette: P('#120a26', '#2a1a4e', '#eefcff', 'rgba(14,6,30,0.62)', '#3ee6d6', RING.glass, '#6b33b0', '#c9a35e', '#24173f', '#4a3480'), material: 'glass', ground: 'stone', ambient: 'sparkles', music: { tune: 'crystal' } },
+  { id: 'frozen', name: 'Frozen Lake', palette: P('#7fb6e3', '#eef8fc', '#ffffff', 'rgba(26,56,92,0.55)', '#7fe0ff', RING.ice, '#2f5266', '#d8b56a', '#86bcd9', '#e9f6fc'), material: 'ice', ground: 'ice', ambient: 'snow', music: { tune: 'frozen' } },
+  { id: 'blizzard', name: 'Pine Blizzard', palette: P('#5b6c86', '#b8c4d2', '#ffffff', 'rgba(26,36,52,0.6)', '#9fd0ff', RING.stone, '#2c3440', '#cfae6a', '#8a9ab0', '#f2f5f9'), material: 'stone', ground: 'snow', ambient: 'blizzard', music: { tune: 'blizzard' } },
+  { id: 'dunes', name: 'Desert Dunes', palette: P('#2f86c9', '#ffd98e', '#ffffff', 'rgba(92,44,18,0.55)', '#ffb02e', RING.sandstone, '#5a3a20', '#e0b45a', '#c8783a', '#f2b96a'), material: 'stone', ground: 'sand', ambient: 'sand', music: { tune: 'dunes' } },
+  { id: 'tomb', name: 'Pyramid Tomb', palette: P('#2c1a0e', '#4e321b', '#fff1d6', 'rgba(30,16,6,0.62)', '#ffc23a', RING.sandstone, '#2a180a', '#d9b25a', '#4a3018', '#8a6a3a'), material: 'stone', ground: 'stone', ambient: 'dust', music: { tune: 'tomb' } },
+  { id: 'jungle', name: 'Jungle Ruins', palette: P('#c9e3a0', '#1d4a30', '#f2ffe8', 'rgba(8,34,18,0.6)', '#ffd23f', RING.vine, '#2a3a1a', '#cfa957', '#3a2a18', '#3f8a38'), material: 'vine', ground: 'grass', ambient: 'leaves', music: { tune: 'jungle' } },
+  { id: 'reef', name: 'Coral Reef', palette: P('#3fd0e0', '#0a3f6e', '#ffffff', 'rgba(4,36,66,0.58)', '#ff7a5a', RING.coral, '#3a1a3a', '#d9c07a', '#a88e5e', '#e0cc9a'), material: 'coral', ground: 'sand', ambient: 'bubbles', music: { tune: 'reef' } },
+  { id: 'cove', name: 'Pirate Cove', palette: P('#070f2a', '#3a5a92', '#fff6dc', 'rgba(6,12,34,0.62)', '#ffd27a', RING.darkwood, '#1a1424', '#c9a35e', '#4a4a6a', '#8a8aa8'), material: 'wood', ground: 'sand', ambient: 'fog', music: { tune: 'cove' } },
+  { id: 'storm', name: 'Storm Peaks', palette: P('#14172a', '#4c5578', '#ffffff', 'rgba(12,14,28,0.6)', '#ffe14d', RING.cloud, '#2a2e44', '#cfae6a', '#8a93b4', '#e6eaf4'), material: 'cloud', ground: 'cloud', ambient: 'rain', music: { tune: 'storm' } },
+  { id: 'clock', name: 'Clocktower', palette: P('#231d44', '#f6b064', '#fff2dc', 'rgba(26,16,36,0.6)', '#ffc46a', RING.brass, '#2a1c10', '#d9b25a', '#3a2e3a', '#6a5a66'), material: 'metal', ground: 'stone', ambient: 'dust', music: { tune: 'clock' } },
+  { id: 'haunted', name: 'Haunted Graveyard', palette: P('#120a26', '#6a4a8a', '#f4ecff', 'rgba(16,8,30,0.62)', '#b8ff6a', RING.bone, '#1a1028', '#b8a070', '#2a1c3a', '#4a3a5a'), material: 'bone', ground: 'dirt', ambient: 'fog', music: { tune: 'haunted' } },
+  { id: 'volcano', name: 'Volcano', palette: P('#0c0a0c', '#5a3a2c', '#fff0e0', 'rgba(24,4,2,0.62)', '#ff7a1a', RING.obsidian, '#ff5a1a', '#c9984e', '#5a0e0c', '#ff7a1a'), material: 'obsidian', ground: 'lava', ambient: 'embers', music: { tune: 'volcano' } },
+  { id: 'dragon', name: "Dragon's Lair", palette: P('#0b090b', '#33231b', '#fff2d6', 'rgba(20,10,4,0.62)', '#ffd75a', RING.gold, '#1e120c', '#c9984e', '#6a4416', '#ffd75a'), material: 'gold', ground: 'gold', ambient: 'embers', music: { tune: 'dragon' } },
+  { id: 'vault', name: "The Thieves' Vault", palette: P('#0a1a22', '#12303a', '#f2fdff', 'rgba(4,14,18,0.62)', '#ff9a3a', RING.tech, '#ff8a2a', '#d9b25a', '#1f3a42', '#4f8a94'), material: 'metal', ground: 'stone', ambient: 'sparkles', music: { tune: 'vault' } },
+  { id: 'lab', name: 'Shape Lab', palette: P('#0d1a2e', '#22344a', '#fff4e0', 'rgba(8,14,28,0.62)', '#ffb84d', RING.brass, '#2a1c10', '#d9b25a', '#4a2e18', '#a8744a'), material: 'metal', ground: 'wood', ambient: 'dust', music: { tune: 'lab' } },
+  { id: 'bayou', name: 'Gator Bayou', palette: P('#1e1638', '#f09a52', '#fff4e6', 'rgba(20,14,30,0.6)', '#ffb04a', RING.darkwood, '#2a1a12', '#d9b25a', '#2e2a1a', '#56783a'), material: 'wood', ground: 'grass', ambient: 'fireflies', music: { tune: 'bayou' } },
+  // 2026-11-20: The Farm's five landmarks as level scenes (the places the world map shows), in level order
+  { id: 'coop', name: 'Hen House', palette: P('#4aa6e8', '#e4f5fb', '#ffffff', 'rgba(24,58,92,0.55)', '#ffcf3a', RING.wood, '#4a3426', '#e7bf63', '#6b4a2b', '#d9b45a'), material: 'wood', ground: 'dirt', ambient: 'pollen', music: { tune: 'strut', arr: 0 } },
+  { id: 'hayfield', name: 'Haystacks', palette: P('#56a6de', '#fbe7b4', '#ffffff', 'rgba(70,46,14,0.55)', '#ffbf3a', RING.wood, '#4a3020', '#e9c46a', '#7a5530', '#d8b25a'), material: 'wood', ground: 'dirt', ambient: 'pollen', music: { tune: 'strut', arr: 1 } },
+  { id: 'pond', name: 'Duck Pond', palette: P('#4aa2e2', '#e2f4f8', '#ffffff', 'rgba(20,56,84,0.55)', '#ffcf3a', RING.wood, '#3a3426', '#e2bc62', '#5a4428', '#5cb43c'), material: 'wood', ground: 'grass', ambient: 'pollen', music: { tune: 'strut', arr: 2 } },
+  { id: 'windmill', name: 'Windmill', palette: P('#5aa2d8', '#fde2a6', '#ffffff', 'rgba(60,52,24,0.55)', '#ff9a3a', RING.wood, '#4a2f20', '#e2b862', '#6a4a2c', '#78b443'), material: 'wood', ground: 'grass', ambient: 'pollen', music: { tune: 'strut', arr: 3 } },
+  { id: 'redbarn', name: 'Big Red Barn', palette: P('#4a3a7a', '#ffc46a', '#fff1de', 'rgba(52,22,30,0.6)', '#ff8a2a', RING.wood, '#2a1a12', '#e0aa52', '#4a3020', '#b8904a'), material: 'wood', ground: 'dirt', ambient: 'dust', music: { tune: 'strut', arr: 4 } },
 ];
 
 // ---------------------------------------------------------------- the stage (v5): the ground band under the nest
@@ -1946,7 +1959,8 @@ export function createBackdrop(theme, seed = 1) {
   const art = ART[th.id] || ART.farm;
   const P = th.palette;
   const lv = seed > 0 && seed % 97 === 0 ? seed / 97 : 0;
-  const S = { th, P, seed: (seed >>> 0) ^ hash32(th.id), w: 0, h: 0, dpr: 1, layers: [], tf: null, ySign: 1, px: 0, py: 0, lv, vi: lv ? (lv - 1) % 5 : 0 };
+  const LK = lv ? lookOf(lv) : null; // 0.8.17 (road.js): an old level keeps its scenery and time of day at its new number
+  const S = { th, P, seed: ((LK ? LK.seed : seed) >>> 0) ^ hash32(th.id), w: 0, h: 0, dpr: 1, layers: [], tf: null, ySign: 1, px: 0, py: 0, lv, vi: LK ? LK.slot : 0 };
   const grade = GRADE[(art.variants || [])[S.vi]] || null;
   let A = null, G = null, FT = null, FB = null, lavaG = null;
   S.tf = (ctx, f) => { // apply layer transform for depth f (0 sky .. 1 near)
@@ -1961,10 +1975,26 @@ export function createBackdrop(theme, seed = 1) {
   const api = {
     theme: th,
     set parallaxYSign(v) { S.ySign = v < 0 ? -1 : 1; },
+    crater() { return S.crater && S.M != null ? [S.crater[0] - S.M, S.crater[1] - S.M] : null; }, // 0.8.19 (aggroB): the volcano's mouth on screen (CSS px), for its bombs
     setParallax(ox = 0, oy = 0) { S.px = ox; S.py = oy; },
+    // 0.8.10: the pictures of this backdrop (up to three full-screen layers, the light shafts, the corner framing, the
+    // stage) go back to the phone before new ones are painted, and when the level cache lets the backdrop go
+    dispose() {
+      for (const l of S.layers) freeCanvas(l.cv);
+      S.layers = [];
+      freeCanvas(S.flat); S.flat = null;
+      if (S.shaft) freeCanvas(S.shaft.cv); S.shaft = null;
+      for (const f of [FT, FB]) if (f) for (const sp of f) if (sp) freeCanvas(sp.cv);
+      FT = FB = null;
+      if (G && G.sp) freeCanvas(G.sp.cv); G = null;
+      if (A && A.sp) for (const sp of A.sp) if (sp) freeCanvas(sp.cv); A = null;
+      // whatever else a scene keeps on S (a full-screen ray picture, fog strips, glows made in its prep)
+      for (const k in S) { const v = S[k]; if (v && v.cv && v.cv.getContext) { freeCanvas(v.cv); S[k] = null; } else if (v && v.getContext && v.width > 1) { freeCanvas(v); S[k] = null; } }
+    },
     resize(w, h, dpr = 1) {
+      api.dispose();
       w = Math.max(1, w); h = Math.max(1, h);
-      dpr = clamp(dpr || 1, 1, 2); const M = Math.round(Math.max(w, h) * 0.03);
+      dpr = clamp(dpr || 1, 0.5, 2); const M = Math.round(Math.max(w, h) * 0.03);
       while (dpr > 0.75 && (w + 2 * M) * (h + 2 * M) * dpr * dpr > 2.8e6) dpr -= 0.25;
       Object.assign(S, { w, h, dpr, M, W: w + 2 * M, H: h + 2 * M, u: Math.min(w, h) / 100, port: w / h < 0.8, R0: Math.min(w, h) * 0.45 });
       S.cx = S.W / 2; S.cy = S.H / 2; S.cam = { x: 0, y: 0, zoom: 1 };
@@ -1987,7 +2017,7 @@ export function createBackdrop(theme, seed = 1) {
       if (art.back) { L.push({ cv: paint([art.sky], 'sky'), f: 0 }); L.push({ cv: paint([art.far], 'far'), f: 0.35 }); }
       else L.push({ cv: paint([art.sky, art.far], 'sky'), f: 0.35 });
       L.push({ cv: paint([art.near], 'near'), f: 1 });
-      S.layers = L;
+      S.layers = L; S.flat = null;
       // light shafts from the key light (top-left), breathing slowly
       S.shaft = null;
       if (at.shafts) { const [col, a, fx = 0.12, ang = 1.02, spread = 0.75, n = 6] = at.shafts; S.R = rng(S.seed + 55); S.shaft = sprite(Math.min(1, dpr * 0.5), S.W, S.H, (c) => rays(c, S.W * fx, -S.H * 0.12, ang, spread, S.H * 1.3, n, col, a, S.R)); }
@@ -2010,15 +2040,34 @@ export function createBackdrop(theme, seed = 1) {
       if (!S.layers.length) return;
       S.cam = cam || S.cam;
       const L = S.layers;
+      if (PERF.low) { // 2026-11-19 Low graphics: every layer (and the light shafts at their mean strength) flattened into ONE picture, one blit a frame, no parallax
+        // 2026-11-20 (perf87): the picture is the visible screen only, in the canvas's own device pixels, copied 1:1 at
+        // (0, 0) (it was the bigger layer with its margins, scaled and off the pixel grid every frame); the still
+        // top-corner framing is baked in too when no animation is drawn between it and the layers
+        const m = ctx.getTransform(), d = m.a, pw = Math.round(S.w * d), ph = Math.round(S.h * d), withFT = !!FT && !art.front;
+        if (!S.flat || S.flat.width !== pw || S.flat.height !== ph || m.b || m.c || Math.abs(d - m.d) > 1e-6) {
+          if (m.b || m.c || Math.abs(d - m.d) > 1e-6 || !(pw > 0 && ph > 0)) { freeCanvas(S.flat); S.flat = null; S.tf(ctx, 0); for (const l of L) ctx.drawImage(l.cv, 0, 0, S.W, S.H); ctx.restore(); if (art.front) art.front(ctx, t, S); if (FT) { const M2 = 2 * S.M; ctx.drawImage(FT[0].cv, -M2, -M2, FT[0].w, FT[0].h); ctx.drawImage(FT[1].cv, S.w - S.fw + M2, -M2, FT[1].w, FT[1].h); } return; }
+          const F = S.flat && S.flat.width === pw && S.flat.height === ph ? S.flat : mkCanvas(pw, ph), c = F.getContext('2d', { alpha: false });
+          c.setTransform(d, 0, 0, d, 0, 0);
+          for (let i = 0; i < L.length; i++) { c.drawImage(L[i].cv, -S.M, -S.M, S.W, S.H); if (i === L.length - 2 && S.shaft) { c.globalAlpha = 0.72; c.drawImage(S.shaft.cv, -S.M, -S.M, S.W, S.H); c.globalAlpha = 1; } }
+          if (withFT) { const M2 = 2 * S.M; c.drawImage(FT[0].cv, -M2, -M2, FT[0].w, FT[0].h); c.drawImage(FT[1].cv, S.w - S.fw + M2, -M2, FT[1].w, FT[1].h); }
+          if (S.flat && S.flat !== F) freeCanvas(S.flat);
+          S.flat = F;
+        }
+        ctx.save(); ctx.setTransform(1, 0, 0, 1, Math.round(m.e), Math.round(m.f)); ctx.drawImage(S.flat, 0, 0); ctx.restore();
+        if (art.front) art.front(ctx, t, S);
+        if (FT && !withFT) { const M2 = 2 * S.M; ctx.drawImage(FT[0].cv, -M2, -M2, FT[0].w, FT[0].h); ctx.drawImage(FT[1].cv, S.w - S.fw + M2, -M2, FT[1].w, FT[1].h); }
+        return;
+      }
       for (let i = 0; i < L.length; i++) {
         S.tf(ctx, L[i].f); ctx.drawImage(L[i].cv, 0, 0, S.W, S.H); ctx.restore();
         if (art.back && i === 0) art.back(ctx, t, S);
-        if (i === L.length - 2) { if (S.shaft) { S.tf(ctx, 0.2); ctx.globalAlpha = 0.72 + 0.28 * Math.sin(t * 0.45); ctx.drawImage(S.shaft.cv, 0, 0, S.W, S.H); ctx.globalAlpha = 1; ctx.restore(); } if (art.mid) art.mid(ctx, t, S); }
+        if (i === L.length - 2) { if (S.shaft && !PERF.lite) { S.tf(ctx, 0.2); ctx.globalAlpha = 0.72 + 0.28 * Math.sin(t * 0.45); ctx.drawImage(S.shaft.cv, 0, 0, S.W, S.H); ctx.globalAlpha = 1; ctx.restore(); } if (art.mid) art.mid(ctx, t, S); }
       }
       if (art.front) art.front(ctx, t, S);
       if (FT) { const [ox, oy] = fOff(), M2 = 2 * S.M; ctx.drawImage(FT[0].cv, ox - M2, oy - M2, FT[0].w, FT[0].h); ctx.drawImage(FT[1].cv, S.w - S.fw + M2 + ox, oy - M2, FT[1].w, FT[1].h); }
     },
-    drawAmbient(ctx, t = 0, cam) { if (A && A.list.length) drawAmbientList(ctx, t, A, S); },
+    drawAmbient(ctx, t = 0, cam) { if (A && A.list.length && !PERF.low) drawAmbientList(ctx, t, A, S); }, // Low graphics: no ambient creatures
     // info (optional): { x, k, nw } = the nest's screen x, px per metre and width in metres, for its contact shadow
     drawGround(ctx, x, y, w, h, t = 0, info) {
       if (!G) return;

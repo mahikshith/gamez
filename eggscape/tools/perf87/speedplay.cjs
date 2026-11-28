@@ -1,0 +1,23 @@
+const { chromium } = require('playwright'); const http = require('http'), fs = require('fs'), path = require('path');
+const dir = '/home/user/gamez/.wt/p87c/eggscape/dist/dev';
+const PORT = 8900 + Math.floor(Math.random() * 90);
+const srv = http.createServer((q, r) => { fs.readFile(path.join(dir, 'index.html'), (e, d) => { r.writeHead(200, { 'content-type': 'text/html' }); r.end(d); }); }).listen(PORT);
+(async () => {
+  const b = await chromium.launch(); const page = await b.newPage({ viewport: { width: 360, height: 640 }, deviceScaleFactor: 2, hasTouch: true });
+  const errs = []; page.on('pageerror', (e) => errs.push(e.message));
+  await page.goto(`http://localhost:${PORT}/`);
+  await page.waitForFunction(() => window.__egg && __egg.G.screen === 'title', null, { timeout: 90000 });
+  await page.evaluate(() => { const E = __egg; const s = E.save; s.unlocked = 50; s.intro = new Proxy({}, { get: () => 1 }); s.seen.pickN = 5; E.start(12); E.press('go'); try { E.press('stk:gotit'); E.press('gotit'); } catch (_) {} });
+  await page.waitForTimeout(1500);
+  const t0 = await page.evaluate(() => { const E = __egg; E.press('pause'); E.press('settings'); return { scr: E.G.screen, set: E.G.settingsOpen, t: E.sim && E.sim.t }; });
+  await page.evaluate(() => __egg.press('set:speed'));
+  await page.waitForTimeout(3000);
+  await page.mouse.click(180, 20); await page.waitForTimeout(300);
+  const t1 = await page.evaluate(() => ({ active: window.__eggSpeed.active, scr: __egg.G.screen, set: __egg.G.settingsOpen, t: __egg.sim && __egg.sim.t, w: document.getElementById('game').width, step: __egg.perf.PERF.step }));
+  await page.evaluate(() => { __egg.press('set:close'); __egg.press('resume'); });
+  await page.waitForTimeout(1500);
+  const t2 = await page.evaluate(() => ({ scr: __egg.G.screen, t: __egg.sim && __egg.sim.t }));
+  await page.screenshot({ path: '/tmp/claude-0/-home-user/a44c1010-2961-56fd-8671-6cba4d15fad4/scratchpad/stplay.png' });
+  console.log(JSON.stringify({ t0, t1, t2, errs }));
+  await b.close(); srv.close();
+})();

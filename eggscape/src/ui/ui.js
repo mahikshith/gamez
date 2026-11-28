@@ -1,3 +1,9 @@
+import { themeFrame, themeButton, themeShape } from './theme.js';
+import { lint as layoutLint, guard as layoutGuard } from './layout-rules.js';
+/* global __DEV__ */
+// lint819: dev builds keep more per record (a rect's size before a strip cut it, each text's fit) and run the layout
+// guard; a release build (__DEV__ false) drops all of it. Outside a build (node tests) it is off.
+// (written out at each use, not as a const, so esbuild folds it to false and drops the rules module from a release)
 // Screen-space UI: every text and widget goes through here so we can measure,
 // fit, hit-test, and assert that nothing overlaps.
 //
@@ -55,11 +61,14 @@ export class UI {
     this.u = 1;
     this.rects = [];
     this.buttons = [];
+    this.texts = []; // lint819 (dev builds): every text drawn this frame with its fit
     this.debug = false;
     this.fr = 0; // frames drawn: drives the press springs and the CTA shimmer
     this.calm = false; // reduced motion: no squash, no shimmer
+    this.skin = null; // the hen skin's UI theme (data/skin-ui.js): button palettes, ribbon, frame wood, button deco
     this.spring = {};
     this.C = C;
+    this.halo = null; // frame818: a light rim colour for dark words while a frameless page draws (null: none)
     this.aBase = 1; // alpha every text returns to (a fading panel sets it for its own draw)
     this.lock = drawLock;
     this.tint = tint;
@@ -79,15 +88,23 @@ export class UI {
   }
 
   begin() {
+    if ((typeof __DEV__ !== 'undefined' && __DEV__)) layoutGuard(this); // lint819: rules 1, 2 and 6 once a second on the frame just drawn (dev builds only)
+    this.halo = null;
+    if ((typeof __DEV__ !== 'undefined' && __DEV__)) this.texts = [];
     this.rects.length = 0;
     this.buttons.length = 0;
     this.fr++;
   }
 
-  record(r, tag, group) {
-    this.rects.push({ ...r, tag, group: group || tag });
+  record(r, tag, group, extra) {
+    const q = { ...r, tag, group: group || tag };
+    if ((typeof __DEV__ !== 'undefined' && __DEV__)) { q.r0 = { x: r.x, y: r.y, w: r.w, h: r.h }; if (group && group !== tag && !/^btn:/.test(group)) q.set = group; if (extra) Object.assign(q, extra); } // r0: survives a strip's cut (clipRecorded spreads the rect)
+    this.rects.push(q);
     return r;
   }
+
+  // lint819: the layout rules (src/ui/layout-rules.js) on this frame's records; o: { rules, screen, flow, play }
+  lint(o) { return (typeof __DEV__ !== 'undefined' && __DEV__) ? layoutLint(this, o) : []; }
 
   font(size) {
     return `600 ${Math.round(size)}px ${FONT}`;
@@ -98,7 +115,7 @@ export class UI {
   text(str, x, y, o = {}) {
     const ctx = this.ctx;
     let size = o.size || 18 * this.u;
-    const maxW = o.maxW || Infinity;
+    const maxW = o.maxW || Infinity, size0 = size, str0 = str;
     ctx.font = this.font(size);
     let w = ctx.measureText(str).width;
     if (w > maxW) {
@@ -132,6 +149,10 @@ export class UI {
       ctx.lineWidth = sw;
       ctx.strokeStyle = o.stroke;
       ctx.strokeText(str, left, by);
+    } else if (this.halo && !o.shadow && !o.grad && darkInk(o.color)) { // frame818: dark words on a frameless page's sky get a soft light rim
+      ctx.lineWidth = Math.max(2, size * 0.2);
+      ctx.strokeStyle = this.halo;
+      ctx.strokeText(str, left, by);
     }
     if (o.grad) {
       const g = ctx.createLinearGradient(0, top, 0, top + size);
@@ -140,9 +161,11 @@ export class UI {
       ctx.fillStyle = g;
     } else ctx.fillStyle = o.color || '#fff';
     ctx.fillText(str, left, by);
+    const aNow = ctx.globalAlpha;
     ctx.globalAlpha = this.aBase; // as before the kit: text leaves alpha at the base (1 unless a panel is fading in)
     const r = { x: left, y: top, w, h: size };
-    if (!o.noRecord) this.record(r, o.tag || 'text:' + str, o.group);
+    if ((typeof __DEV__ !== 'undefined' && __DEV__)) this.texts.push({ str, tag: o.tag, size, fit: size / size0, cut: str !== str0, a: aNow, x: left, y: top, w, h: size });
+    if (!o.noRecord) this.record(r, o.tag || 'text:' + str, o.group, (typeof __DEV__ !== 'undefined' && __DEV__) ? { kind: 'text', size } : null);
     return r;
   }
 
@@ -241,9 +264,10 @@ export class UI {
     // wood frame
     this.roundRect(x + 1.5 * s, y + 1.5 * s, w - 3 * s, h - 3 * s, r - 1.5 * s);
     const g = ctx.createLinearGradient(x, y, x + w * 0.25, y + h);
-    g.addColorStop(0, o.wa || '#f0b972');
-    g.addColorStop(0.5, o.wb || '#cf8c48');
-    g.addColorStop(1, o.wc || '#b06f34');
+    const WD = (this.skin && this.skin.wood) || [];
+    g.addColorStop(0, o.wa || WD[0] || '#f0b972');
+    g.addColorStop(0.5, o.wb || WD[1] || '#cf8c48');
+    g.addColorStop(1, o.wc || WD[2] || '#b06f34');
     ctx.fillStyle = g;
     ctx.fill();
     ctx.lineWidth = 1.2 * s;
@@ -270,6 +294,7 @@ export class UI {
     ctx.fillStyle = sh;
     ctx.fillRect(bx, by, bw, 12 * s);
     ctx.restore();
+    if (this.skin && this.skin.pack && !o.plain && w > 150 * s && h > 140 * s) themeFrame(ctx, this.skin, x, y, w, h, r, s); // the pack's border and corner ornaments
     if (o.record) this.record({ x, y, w, h }, o.tag || 'panel', o.group);
     return { x: bx, y: by, w: bw, h: bh };
   }
@@ -303,7 +328,7 @@ export class UI {
 
   // Header ribbon with folded tails, centred on cx; (y, h) is the band. o.color: base hex.
   ribbon(text, cx, y, w, h, o = {}) {
-    const ctx = this.ctx, s = o.s || this.u, c = o.color || '#e8503a';
+    const ctx = this.ctx, s = o.s || this.u, SK = this.skin, c = (SK && SK.ribbon && !o.keep) ? SK.ribbon : o.color || '#e8503a';
     const dark = tint(c, -0.34), line = tint(c, -0.62), x = cx - w / 2, tail = Math.min(16 * s, h * 0.5), drop = h * 0.22;
     // tails
     for (const d of [-1, 1]) {
@@ -341,6 +366,13 @@ export class UI {
     g.addColorStop(1, tint(c, -0.12));
     ctx.fillStyle = g;
     ctx.fill();
+    if (SK && SK.stripes && !o.keep) { // candy-cane stripes
+      ctx.save(); ctx.clip();
+      ctx.fillStyle = 'rgba(255,255,255,0.42)';
+      for (let sx = x - h; sx < x + w + h; sx += 18 * s) { ctx.beginPath(); ctx.moveTo(sx, y + h); ctx.lineTo(sx + 7 * s, y + h); ctx.lineTo(sx + 7 * s + h * 0.7, y); ctx.lineTo(sx + h * 0.7, y); ctx.closePath(); ctx.fill(); }
+      ctx.restore();
+      this.roundRect(x, y, w, h, 5 * s);
+    }
     ctx.lineWidth = 1.5 * s;
     ctx.strokeStyle = line;
     ctx.stroke();
@@ -354,6 +386,47 @@ export class UI {
     ctx.stroke();
     ctx.setLineDash([]);
     if (text) this.text(text, cx, y + h / 2, { size: o.size || h * 0.6, align: 'center', maxW: w - 20 * s, color: '#fff', stroke: line, strokeW: Math.max(2.5, h * 0.11), shadow: line, tag: o.tag, group: o.group, noRecord: o.noRecord });
+  }
+
+  // ---- the one page header (0.8.14 alignment pass): every full page (shop, Settings, Extras, Practice) lays its header
+  // out through these two, with the level card's metrics, so the pages cannot drift apart again.
+  // pageBox(maxW, A): the page's content column and its header line. s: the page scale; pad: the side margin; x, w: the
+  // column (centred in the safe rect, never wider than maxW); y, h: the header line; bottom: where the header ends.
+  pageBox(maxW = Infinity, A = this.A) {
+    const u = this.u, s = u * Math.max(0.82, Math.min(1, A.w / (390 * u))), pad = 16 * u;
+    const w = Math.min(A.w - 2 * pad, maxW), h = 52 * s, y = A.y + 4 * s; // 52: the header buttons keep the size they had before the pass (the owner's rule: nothing shrinks)
+    return { s, pad, x: A.x + A.w / 2 - w / 2, w, y, h, bottom: y + h, cy: y + h / 2 };
+  }
+  // pageHeader(P, o): back at the column's left edge, the title's ribbon centred on the column (= the screen), the
+  // right slot (coins, stars, Done) at its right edge; all on one centre line, all P.h tall.
+  // o.back: the back button's id; o.left2: { id, icon } a second button beside it (the shop's home), kept only while the
+  // title still has its room; o.right: { w, draw(x, y, w, h) }; o.title, o.color, o.tag: the ribbon.
+  pageHeader(P, o = {}) {
+    const { s, x, y, w, h } = P, g = 8 * s, tail = 16 * s;
+    const rightW = o.right ? o.right.w : 0;
+    const tw0 = o.title ? this.measure(o.title, 25 * s) : 0, need = tw0 + 48 * s, want = Math.max(150 * s, need);
+    const room = (leftW) => w - 2 * (Math.max(leftW, rightW) + g + tail); // centred on the column
+    const span = (leftW) => w - leftW - rightW - 2 * (g + tail); // between the left buttons and the right slot
+    // the second left button stays while it costs the title nothing (the right slot is as wide anyway and the title is
+    // whole) or the title keeps its full width
+    const two = !!o.left2 && (room(2 * h + g) >= want || (2 * h + g <= Math.max(h, rightW) + 0.5 && room(2 * h + g) >= need));
+    const leftW = two ? 2 * h + g : h;
+    this.button(o.back || 'back', '', x, y, h, h, { kind: 'hud', icon: ICON.left, iconS: 1.3, round: h / 2 });
+    if (two) this.button(o.left2.id, '', x + h + g, y, h, h, { kind: 'hud', icon: o.left2.icon, iconS: 1.25, round: h / 2 });
+    if (o.right) o.right.draw(x + w - rightW, y, rightW, h);
+    if (o.title == null) return { two, ribL: x + w / 2, ribR: x + w / 2 }; // (no title for a moment: the Lucky Spin's bag chip stands there while a prize lands in it)
+    // 0.8.16 (a five-digit purse cut the shop's title to "Sh..."): the title is always whole. Centred on the column
+    // while it fits there; else it takes the room between the buttons and the right slot (off centre); and if even
+    // that is short its letters shrink to fit. Never an ellipsis.
+    let rw = Math.min(want, room(leftW)), cx = x + w / 2;
+    if (rw < need) {
+      const L = x + leftW + g + tail, R = x + w - rightW - g - tail;
+      rw = Math.max(60 * s, Math.min(want, span(leftW)));
+      cx = Math.max(L + rw / 2, Math.min(x + w / 2, R - rw / 2));
+    }
+    const size = Math.min(25 * s, 25 * s * Math.max(0.3, (rw - 24 * s) / tw0));
+    this.ribbon(o.title, cx, y + 2 * s, rw, h - 6 * s, { s, color: o.color, size, tag: o.tag });
+    return { two, ribL: cx - rw / 2 - tail, ribR: cx + rw / 2 + tail };
   }
 
   // 0 (rest) .. 1 (held down), a springy follow of the pressed state; one step per frame per id
@@ -375,7 +448,9 @@ export class UI {
     const ctx = this.ctx;
     const u = this.u;
     const pressed = this.pressedId === id;
-    let K = o.face || KIND[o.kind] || KIND[LEGACY[o.color]] || (o.color ? faceOf(o.color) : KIND.gold);
+    const SK = this.skin;
+    if (SK && SK.pack && (o.icon === ICON.pause || o.icon === ICON.grid)) { CURSK = SK; o = { ...o, icon: o.icon === ICON.pause ? THEMED.pause : THEMED.grid }; }
+    let K = o.face || (SK && SK.kinds && SK.kinds[o.kind]) || KIND[o.kind] || KIND[LEGACY[o.color]] || (o.color ? faceOf(o.color) : KIND.gold);
     if (o.disabled && !o.keepFace) K = KIND.off;
     const lip = Math.min(6 * u, h * 0.13) * (o.disabled ? 0.55 : 1);
     const p = this.pressAmt(id, pressed);
@@ -390,6 +465,8 @@ export class UI {
       ctx.translate(-cx, -by);
     }
     if (o.disabled) ctx.globalAlpha *= o.dim ?? (o.keepFace ? 1 : 0.82);
+    const adOff = !!o.ad && AD_OFF && !o.disabled; // 0.8.17: no video can be shown now: the same button, dimmed, its badge a no-signal mark
+    if (adOff) { ctx.globalAlpha *= 0.62; o = { ...o, shimmer: false }; }
     if (!o.ghost) {
     // contact shadow
     if (!o.flat) { this.roundRect(x - 0.5 * u, y + lip + 2.5 * u, w + u, fh, rad); ctx.fillStyle = 'rgba(16,6,0,0.22)'; ctx.fill(); }
@@ -431,6 +508,8 @@ export class UI {
       }
     }
     ctx.restore();
+    if (SK && SK.deco && !o.disabled && !o.face && o.kind !== 'hud' && o.kind !== 'off' && h > 26 * u) this.deco(SK.deco, x, y + dy, w, fh, rad);
+    if (SK && SK.pack && !o.disabled && !o.face && o.kind !== 'hud' && o.kind !== 'off' && h > 26 * u) themeButton(ctx, SK, x, y + dy, w, fh, rad, u, o.kind === 'primary'); // the pack's material
     }
     const cy = y + dy + fh / 2;
     const size = o.size || Math.min(22 * u, h * 0.42);
@@ -457,9 +536,45 @@ export class UI {
     }
     ctx.restore();
     const r = o.hit || { x, y, w, h }; // o.hit: a larger tap/record rect than the drawn face (segmented rows)
-    this.record(r, 'btn:' + id, 'btn:' + id);
+    this.record(r, 'btn:' + id, 'btn:' + id, (typeof __DEV__ !== 'undefined' && __DEV__) ? { ui: 1, kind: 'btn', set: o.group, ghost: !!o.ghost } : null); // o.group (lint819): the row / column it lines up with
     if (!o.disabled) this.buttons.push({ id, ...r });
     return { x, y, w, h, dy, cy };
+  }
+
+  // the skin's button decoration: a snow cap along the top edge, or two twinkles on the corners
+  deco(kind, x, y, w, h, rad) {
+    const ctx = this.ctx, u = this.u;
+    ctx.save();
+    if (kind === 'snow') {
+      // one continuous snow mound along the top edge: a single smooth path with a few gentle bumps, and a soft blue-grey
+      // underside; icicles on wide buttons stay in the corners, clear of the label
+      const x0 = x + rad * 0.5, x1 = x + w - rad * 0.5, span = x1 - x0, nb = w > 110 * u ? 4 : w > 70 * u ? 3 : 2, th = Math.min(7 * u, h * 0.22), base = y + th * 0.35, top = y - th * 0.7;
+      const hs = (i) => { const f = Math.sin(i * 12.9898 + x * 0.013) * 43758.5453; return f - Math.floor(f); };
+      const mound = (dy) => {
+        ctx.beginPath(); ctx.moveTo(x0 - 3 * u, base + dy);
+        for (let i = 0; i < nb; i++) { const a = x0 + (span * i) / nb, b2 = x0 + (span * (i + 1)) / nb, hh = top - th * 0.35 * hs(i) + dy; ctx.bezierCurveTo(a + (b2 - a) * 0.1, hh, b2 - (b2 - a) * 0.1, hh, b2, i === nb - 1 ? base + dy : y - th * 0.1 + dy); }
+        ctx.bezierCurveTo(x1 + 3 * u, base + th * 0.5 + dy, x1 - 6 * u, base + th * 0.9 + dy, x1 - 12 * u, base + th * 0.7 + dy); // a soft, slightly wavy underside
+        ctx.bezierCurveTo(x + w * 0.65, base + th * 1.1 + dy, x + w * 0.35, base + th * 0.5 + dy, x0 + 10 * u, base + th * 0.8 + dy);
+        ctx.bezierCurveTo(x0, base + th * 0.8 + dy, x0 - 3 * u, base + th * 0.5 + dy, x0 - 3 * u, base + dy); ctx.closePath();
+      };
+      mound(1.6 * u); ctx.fillStyle = 'rgba(80,115,170,0.32)'; ctx.fill(); // underside shade
+      mound(0); const g = ctx.createLinearGradient(0, top, 0, base + th); g.addColorStop(0, '#fff'); g.addColorStop(1, '#d6e8fa'); ctx.fillStyle = g; ctx.fill();
+      if (w > 110 * u) { // icicles
+        ctx.fillStyle = 'rgba(225,244,255,0.95)'; ctx.beginPath();
+        for (const [f, l] of [[0.1, 0.16], [0.17, 0.1], [0.9, 0.14], [0.83, 0.09]]) { const ix = x + w * f, iw = 2.2 * u, il = h * l + th * 0.6; ctx.moveTo(ix - iw, base + th * 0.5); ctx.lineTo(ix + iw, base + th * 0.5); ctx.lineTo(ix, base + th * 0.5 + il); ctx.closePath(); }
+        ctx.fill();
+      }
+    } else if (kind === 'sparkle') {
+      const tw = this.calm ? 1 : 0.6 + 0.4 * Math.sin(this.fr * 0.08 + x * 0.05);
+      for (const [px, py, k] of [[x + 9 * u, y + 7 * u, 1], [x + w - 10 * u, y + h - 9 * u, 0.75]]) {
+        const r = 5 * u * k * tw;
+        ctx.beginPath();
+        ctx.moveTo(px, py - r); ctx.quadraticCurveTo(px, py, px + r, py); ctx.quadraticCurveTo(px, py, px, py + r); ctx.quadraticCurveTo(px, py, px - r, py); ctx.quadraticCurveTo(px, py, px, py - r);
+        ctx.fillStyle = 'rgba(255,255,240,0.95)';
+        ctx.fill();
+      }
+    }
+    ctx.restore();
   }
 
   hit(px, py) {
@@ -493,8 +608,45 @@ export class UI {
   pop(t, dur = 0.3) { return this.calm || t >= dur ? 1 : 0.86 + 0.14 * backOut(t / dur); }
 }
 
+// frame818: is this fill colour dark (ink that needs a light rim on a sky)? '#rgb', '#rrggbb' or 'rgb(a)(...)'
+const INK_CACHE = new Map();
+function darkInk(c) {
+  if (!c || typeof c !== 'string') return false;
+  let v = INK_CACHE.get(c);
+  if (v === undefined) {
+    let r = 255, g = 255, b = 255;
+    const m = c.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i), n = c.match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/i);
+    if (m) { const h = m[1].length === 3 ? m[1].replace(/./g, (q) => q + q) : m[1]; r = parseInt(h.slice(0, 2), 16); g = parseInt(h.slice(2, 4), 16); b = parseInt(h.slice(4, 6), 16); }
+    else if (n) { r = +n[1]; g = +n[2]; b = +n[3]; }
+    v = 0.299 * r + 0.587 * g + 0.114 * b < 150;
+    if (INK_CACHE.size < 256) INK_CACHE.set(c, v);
+  }
+  return v;
+}
+
+// 0.8.17: while no video can be shown (offline, no ad loaded, the iPhone shell without ads) main.js says so once a frame
+// and every film badge turns into a no-signal mark (the buttons that carry one dim too); a tap says how to get it
+let AD_OFF = false;
+export function setAdOff(v) { AD_OFF = !!v; }
+export const adOff = () => AD_OFF;
+// the no-signal mark: the badge's tile in grey, the wifi fan crossed out (same size and place as the film badge)
+export function drawNoSignal(ctx, x, cy, w, h) {
+  ctx.save();
+  const y = cy - h / 2, r = h * 0.28;
+  ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+  ctx.fillStyle = '#ece8f2'; ctx.fill();
+  const fx = x + w / 2, fy = y + h * 0.8, R = h * 0.62;
+  ctx.strokeStyle = '#7d7590'; ctx.lineCap = 'round'; ctx.lineWidth = Math.max(1, h * 0.11);
+  for (const k of [1, 0.66]) { ctx.beginPath(); ctx.arc(fx, fy, R * k, -Math.PI * 0.78, -Math.PI * 0.22); ctx.stroke(); }
+  ctx.fillStyle = '#7d7590'; ctx.beginPath(); ctx.arc(fx, fy - h * 0.04, h * 0.09, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#e8402e'; ctx.lineWidth = Math.max(1.2, h * 0.12);
+  ctx.beginPath(); ctx.moveTo(x + w * 0.24, y + h * 0.18); ctx.lineTo(x + w * 0.76, y + h * 0.84); ctx.stroke();
+  ctx.restore();
+}
+
 // "Watch a video" badge: a white film tile with a red play triangle. Every rewarded-ad button carries it.
 export function drawAdBadge(ctx, x, cy, w, h) {
+  if (AD_OFF) { drawNoSignal(ctx, x, cy, w, h); return; }
   ctx.save();
   const y = cy - h / 2, r = h * 0.28;
   const rr = (dx, dy) => {
@@ -538,6 +690,7 @@ const bar = (ctx, x, y, w, h) => {
   ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
   ctx.fillStyle = INK; ctx.fill();
 };
+let CURSK = null; // the skin whose pack shapes the themed pause/grid icons (set by button())
 export const ICON = {
   pause: G_((ctx, cx, cy, s) => { bar(ctx, cx - s * 0.27, cy - s * 0.3, s * 0.2, s * 0.6); bar(ctx, cx + s * 0.07, cy - s * 0.3, s * 0.2, s * 0.6); }),
   play: G_((ctx, cx, cy, s) => tri(ctx, cx - s * 0.2, cy - s * 0.28, cx + s * 0.3, cy, cx - s * 0.2, cy + s * 0.28, s)),
@@ -577,6 +730,13 @@ export const ICON = {
     bar(ctx, cx - s * 0.19, cy - s * 0.36, s * 0.1, s * 0.2); bar(ctx, cx + s * 0.09, cy - s * 0.36, s * 0.1, s * 0.2);
     ctx.fillRect(cx - s * 0.07, cy + s * 0.04, s * 0.14, s * 0.13);
   }),
+  // a little house (Home: back to the title from the shop or the pause card)
+  home: G_((ctx, cx, cy, s) => {
+    ctx.fillStyle = INK; ctx.strokeStyle = INK; ctx.lineJoin = 'round'; ctx.lineWidth = s * 0.08;
+    ctx.beginPath(); ctx.moveTo(cx - s * 0.34, cy - s * 0.02); ctx.lineTo(cx, cy - s * 0.33); ctx.lineTo(cx + s * 0.34, cy - s * 0.02); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.rect(cx - s * 0.24, cy - s * 0.06, s * 0.48, s * 0.36); ctx.rect(cx - s * 0.07, cy + s * 0.09, s * 0.14, s * 0.21); ctx.fill('evenodd'); // the door is a hole
+  }),
+  plus: G_((ctx, cx, cy, s) => { bar(ctx, cx - s * 0.3, cy - s * 0.08, s * 0.6, s * 0.16); bar(ctx, cx - s * 0.08, cy - s * 0.3, s * 0.16, s * 0.6); }),
   check: G_((ctx, cx, cy, s) => { ctx.strokeStyle = INK; ctx.lineWidth = s * 0.17; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.beginPath(); ctx.moveTo(cx - s * 0.26, cy + s * 0.02); ctx.lineTo(cx - s * 0.07, cy + s * 0.2); ctx.lineTo(cx + s * 0.28, cy - s * 0.2); ctx.stroke(); }),
   sound(on) {
     return G_((ctx, cx, cy, s) => {
@@ -602,6 +762,11 @@ export const ICON = {
       if (!on) { ctx.beginPath(); ctx.moveTo(cx - s * 0.3, cy - s * 0.3); ctx.lineTo(cx + s * 0.32, cy + s * 0.32); ctx.stroke(); }
     });
   },
+};
+// pack shapes for the pause bars and the levels grid (ui/theme.js SH): baubles, mugs, gems, leaves, bubbles
+const THEMED = {
+  pause: G_((ctx, cx, cy, s) => { const f = themeShape(CURSK, 'bar'); if (!f) return ICON.pause(ctx, cx, cy, s); ctx.fillStyle = INK; f(ctx, cx - s * 0.27, cy - s * 0.3, s * 0.2, s * 0.6); f(ctx, cx + s * 0.07, cy - s * 0.3, s * 0.2, s * 0.6); }),
+  grid: G_((ctx, cx, cy, s) => { const f = themeShape(CURSK, 'cell'); if (!f) return ICON.grid(ctx, cx, cy, s); ctx.fillStyle = INK; ctx.strokeStyle = INK; const r = s * 0.15, d = s * 0.22; for (const [a, b] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) f(ctx, cx + a * d, cy + b * d, r); }),
 };
 
 // A padlock with form: steel shackle, gold body, keyhole. s = half width of the body.

@@ -1,0 +1,8 @@
+version: 1
+bundleID: com.eggscape.game
+product: Eggscape
+infoPath: Info.plist
+iconPath: ../store/icon-1024.png
+# the built game page: `node tools/build.mjs --target ios` (from eggscape/) writes it; xtool copies the folder into the app
+resources:
+- Resources/game

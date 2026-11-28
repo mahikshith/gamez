@@ -3,22 +3,34 @@ import { World, Vec2, Polygon, Circle, Box, RopeJoint } from 'planck';
 import { EGG_H, EGG_W, RING_TH, TAU, eggHull, solidArcs, wrap, clamp, rng } from './geom.js';
 import { v31Init, v31Step, v31State, v31Load, v31Contact, frostOrb, animalsHit } from './boss.js'; // bosses (v3.1)
 import { chickMethods, CHICK_KEYS } from './chicks.js'; // v3.2 chick kinds
-import { salMethods } from './salamander.js'; // v3.2 lava salamander
+import { salMethods, VOLC } from './salamander.js'; // v3.2 lava salamander; 0.8.19 (aggroB) the volcano's bombs
 import { frogMethods } from './frog.js'; // v3.3 frog
 import { allyMethods } from './allies.js'; // v3.4 farm allies (rooster, goose)
 import { seaMethods } from './sea.js'; // v3.3 octopus and fish schools
 import { p2Methods, P2_TYPES, P2_KEYS } from './powers2.js'; // v3.4 powers and combos
 import { warpMethods } from './warp.js'; // v3.4 warp gate
 import { thiefMethods } from './thieves.js';
+import { banditMethods } from './bandit.js'; // 0.8.17 bandit: the raccoon boss of L6
+import { menaceMethods } from './menace.js'; // 0.8.19 the menace engine: heat, attack tokens, the breather, ring reactions
+import { kitMethods } from './kits.js'; // 0.8.18 kits: mama raccoon and her kits
 import { reefMethods } from './reef.js'; // world 8: hermit crab, pufferfish, jellyfish
+import { urchinMethods } from './urchin.js'; // 0.8.17 urchin: Spike the sea urchin (level 46)
 import { kcMethods } from './kingcrab.js'; // world 8 boss: the King Crab // v3.6 the egg thieves: weasel, rats, their bosses
 import { cwMethods } from './clockwork.js'; // v4 the clockwork cast: spider, wind-up beetle, spring jack
 import { owlMethods } from './owl.js'; // v4 the Clockwork Owl boss
 import { bayouMethods } from './bayou.js'; // v3.7 Gator Bayou: alligator, snapping turtle, mosquito swarm, Grandpa Gator
 import { stkMethods } from './strike.js'; // Chick Strike powers
+import { perkMethods, PERK } from './perks.js'; // 0.8.10 egg skin powers
+import { pipMethods } from './pip.js'; // 0.8.17 pip: Pip the penguin (level 16)
+import { cocoMethods } from './coco.js'; // 0.8.17 coco: Coco the monkey (level 10)
+import { creepMethods } from './creeper.js'; // 0.8.18 the moving thorn: one of the ring's own thorns, sliding in a groove
+import { reachMethods } from './henreach.js'; // the hen runs the basket under an egg (nest.reach)
 import { profileOf, shapeRadius, shapeArcs, segCount, segQuad, ringPt, ringSpd, ringRhoW, ringReach, rockOf, rockStep, chAtPt } from './shapes.js'; // v3.3 M10 vault shapes
+import { WORLD_N, hardOf } from '../road.js'; // 0.8.17: sixty levels, six a world
 
 export const DT = 1 / 120;
+export const REWIND_S = 12; // the fail card's Rewind goes back this many seconds (0.8.14: 5 s gave too little time to react)
+const FAST_RIM = 9.6; // m/s at a ring's wall: above this (ring speed past 350%) the physics takes half steps
 
 // Impact thresholds: approach speed along the contact normal (m/s).
 // Both are quoted at 10 m/s^2 and scale with sqrt(g / 10) (Sim.vs), so the fall HEIGHT that cracks stays the same at any gravity.
@@ -85,6 +97,7 @@ export const POWER = {
   water: { time: 8 }, // landing impacts count half
   magnet: { time: 8, len: 0.8 },
 };
+export const MAGNET = { pull: 2.4, same: 1.5, lead: 0.3, vmax: 3 }; // the pull in g: the egg behind, two eggs in one chamber, the egg in front
 export const ORB_TYPES = ['fire_red', 'fire_black', 'fire_green', 'fire_gold', 'stone', 'bubble', 'water', 'thunder', 'thorn', 'magnet', 'twin',
   'hourglass', 'feather', 'rockskin', 'curse', 'frost', ...P2_TYPES];
 export const LEGACY_ORB = { fire: 'fire_red', steel: 'stone', foxcurse: 'curse' }; // old item ids (levels and saves); v3.6 renamed the curse orb
@@ -113,6 +126,15 @@ export const MODES = {
   hard: { fuse: 0.8, nest: 1.3, nestW: 0, crack: 0.85, meteor: true, softThorns: false },
 };
 
+// The hard levels (0.8.15): one in each world from the second on, the level before the boss. Its fuse burns faster on
+// Medium and Hard, for everyone alike. It pays half as many coins again (economy.js levelCoins) and says so on its
+// card and on the map. Easy is left alone. tools/planner-modes.mjs must still win each of them (the list lives here,
+// not in the generated level data, so the levels themselves are untouched).
+export const SCARE_S = 20; // the Scarecrow booster stands this long
+export const HARD_IDS = Array.from({ length: WORLD_N - 1 }, (_, k) => hardOf(k + 1)); // 0.8.17: 11, 17 .. 59 (road.js: six a world)
+export const HARD_LEVEL = { easy: 1, medium: 0.8, hard: 0.9 };
+export const isHardLevel = (level) => !!level && HARD_IDS.includes(level.id);
+
 // ---------- predators (v3): mode scaling (G10). snake = speed x, venom/warn = telegraph time x
 export const PRED = {
   easy: { snake: 1.4, venom: 1.3, warn: 1.35 },
@@ -123,6 +145,8 @@ export const PRED = {
 Object.assign(PRED.easy, { stun: 1.4, back: 1.3 }); Object.assign(PRED.medium, { stun: 1, back: 1 }); Object.assign(PRED.hard, { stun: 0.75, back: 0.8 });
 // sal = gap between the salamander's breaths x (its telegraph uses warn)
 PRED.easy.sal = 1.35; PRED.medium.sal = 1; PRED.hard.sal = 0.8;
+// the crawlers' brain (sim/salamander.js BRAIN): chase = walk speed x while hunting an egg, salGap = s between proximity breaths
+Object.assign(PRED.easy, { chase: 1, salGap: 3.5 }); Object.assign(PRED.medium, { chase: 1.35, salGap: 2.5 }); Object.assign(PRED.hard, { chase: 1.5, salGap: 2.5 });
 // Snake kinds: only a level spec's `kind` turns a trait on; otherwise every snake is classic and the skin is cosmetic.
 export const SNAKE_KIND = {
   classic: { skin: 'violet' },
@@ -189,11 +213,13 @@ export class Sim {
     this.opts = opts;
     this.mode = MODES[opts.mode] ? opts.mode : 'medium';
     this.MD = MODES[this.mode];
-    this.crackV = CRACK_V * this.vs * this.MD.crack;
+    this.crackV = CRACK_V * this.vs * this.MD.crack * (opts.perk === 'striped' ? PERK.bouncy : 1); // Bouncy (Striped egg): harder landings before a crack
     this.shatterV = SHATTER_V * this.vs;
     this.golden = opts.golden || false;
-    // start boosters (store): opts.stone, opts.time (+15 s), opts.sponge (pad under the first drop)
-    this.timeLimit = level.time ? Math.round(level.time * this.MD.fuse) + (opts.time ? 15 : 0) : 0;
+    // start boosters (store): opts.stone, opts.time (+15 s), opts.sponge (pad under the first drop), opts.nest (a wider
+    // basket), opts.snips (every start thorn snipped: sim/strike.js)
+    // egg skin powers (sim/perks.js): opts.perk = the skin worn in play; Sweet Seconds (Candy Cane) adds 5 s
+    this.timeLimit = level.time ? Math.round(level.time * this.MD.fuse * (isHardLevel(level) ? HARD_LEVEL[this.mode] || 1 : 1)) + (opts.time ? 15 : 0) + (opts.perk === 'candy' ? PERK.sweet : 0) : 0;
     this.orbs = [];
     this.embers = [];
     this.snakes = []; // predators (v3): see buildPredators
@@ -206,6 +232,7 @@ export class Sim {
     this.lastSaveT = -9;
     // v3 physics: global power timers, lava rocks, icicles
     this.slowT = 0; this.curseT = 0; this.jitT = 0; this.guardT = 0; this.skinT = 0;
+    this.scareT = opts.scare ? SCARE_S : 0; this.scareTick = 0; // 0.8.15 Scarecrow booster: every villain keeps away while it stands
     this.lavaRocks = []; this.icicles = [];
     const LV = typeof level.lava === 'object' && level.lava, IC = level.icicles;
     this.v3T = { lava: LV ? LV.delay ?? 5 : -1, ice: IC ? IC.delay ?? 4 : -1 };
@@ -245,7 +272,7 @@ export class Sim {
 
     // nest + ground
     const n = L.nest || {};
-    this.nestW = (n.w || 1.9) + this.MD.nestW;
+    this.nestW = ((n.w || 1.9) + this.MD.nestW) * (this.opts.nest ? 1.35 : 1); // Wide Nest start boost: 35% wider
     this.nestPattern = n.pattern || 'sine';
     this.groundY = -(this.outerR + (n.drop ?? 0.6) + 0.35) * this.gy; // underwater: the surface, over the vault
     this.nestY = this.groundY + 0.02 * this.gy;
@@ -259,6 +286,7 @@ export class Sim {
     this.nest.createFixture({ shape: new Polygon([V(-w - 0.08, 0.5), V(-w, 0.08), V(-w + 0.14, 0.12), V(-w + 0.04, 0.5)]), ...nestFix });
     this.nest.createFixture({ shape: new Polygon([V(w + 0.08, 0.5), V(w - 0.04, 0.5), V(w - 0.14, 0.12), V(w, 0.08)]), ...nestFix });
     this.nest.createFixture({ shape: new Box(w - 0.12, 0.25, V(0, 0.38), 0), isSensor: true, ...filt('NEST'), userData: { kind: 'nestIn' } });
+    this.reachInit(L); // nest.reach: the hen runs the basket (sim/henreach.js)
     this.ground = this.world.createBody({ type: 'static', position: Vec2(0, this.groundY - 0.5 * this.gy) });
     this.ground.createFixture({ shape: new Box(60, 0.5), friction: 0.8, ...filt('GROUND'), userData: { kind: 'ground' } });
 
@@ -287,6 +315,12 @@ export class Sim {
     this.allyInit(L); // v3.4: farm allies (sim/allies.js)
     this.seaInit(L); // v3.3: octopus and fish schools (sim/sea.js)
     this.thiefInit(L); // v3.6: the egg thieves (sim/thieves.js)
+    this.pipInit(L); // 0.8.17 pip
+    this.cocoInit(L); // 0.8.17 coco
+    this.menaceInit(L); // 0.8.19 the menace engine (sim/menace.js)
+    this.bandInit(L); // 0.8.17 bandit (sim/bandit.js)
+    this.kitInit(L); // 0.8.18 kits (sim/kits.js)
+    this.creepInit(L); // 0.8.18 the moving thorn (sim/creeper.js)
     this.reefInit(L); if (L.bossFight && L.bossFight.kind === 'kingcrab') this.kcInit(L); // world 8 (sim/reef.js, sim/kingcrab.js)
     this.cwInit(L); this.owlInit(L); // v4: the clockwork cast and the Clockwork Owl
     this.bayouInit(L); // v3.7: Gator Bayou creatures (sim/bayou.js)
@@ -295,6 +329,7 @@ export class Sim {
     this.chickSetup(L); // v3.2: pre-tinted eggs, hard-ice rings
     this.p2Init(); // v3.4 powers
     this.stkInit(); // Chick Strike powers (sim/strike.js): data only until one is fired
+    this.perkInit(); // egg skin powers (sim/perks.js)
   }
 
   makeRing(i, r, spec, mat) {
@@ -357,14 +392,15 @@ export class Sim {
   }
 
   // kind: 'hook' (sharp red, breaks the egg) or 'blunt' (grey spike, cracks only) (F22)
-  addThorn(ring, a, side, h, kind = 'hook') {
+  addThorn(ring, a, side, h, kind = 'hook', solid = true) { // solid false: no fixture (a moving thorn, sim/creeper.js)
     const r = ring.r, half = 0.13 / ringSpd(ring, a);
     const base = side === 'in' ? r - RING_TH / 2 + 0.03 : r + RING_TH / 2 - 0.03;
     const tip = side === 'in' ? base - h : base + h;
     const p = (rad, ang) => Vec2(...ringPt(ring, ang, rad)); // v3.3 M10: stands square on a shaped ring
     const thorn = { a, side, h, base, tip, alive: true, ring, ext: 1, kind, key: ring.i * 1000 + ring.thorns.length };
     const verts = side === 'in' ? [p(base, a - half), p(base, a + half), p(tip, a)] : [p(base, a + half), p(base, a - half), p(tip, a)];
-    thorn.fix = ring.body.createFixture({ shape: new Polygon(verts), friction: 0.3, ...filt('RING'), userData: { kind: 'thorn', thorn } });
+    if (solid) thorn.fix = ring.body.createFixture({ shape: new Polygon(verts), friction: 0.3, ...filt('RING'), userData: { kind: 'thorn', thorn } });
+    else { thorn.fix = null; thorn.shape = new Polygon(verts); }
     ring.thorns.push(thorn);
   }
 
@@ -379,6 +415,7 @@ export class Sim {
       fire: 0, fireKind: null, stone: 0, bubble: 0, bubbleFix: null, magnet: 0, joint: null, golden: extra.golden || 0,
       water: 0, zap: 0, glow: 0, chick: 0, meteor: 0, honey: 0, hold: null, honeyCD: 0, prize: 0, spk: new Set(), // spk: blunt spikes touching now
       icy: 0, // L15: frozen solid by the frost gecko's lick (s left; rides egg.hold's ring like honey)
+      iceA: 0, iceN: 0, iceD: 0, iceBy: -1, // 0.8.19 (aggroB): the ice's shakes (sim/salamander.js salIceStep) and who froze it
       crackCD: 0, nestT: 0, inNest: 0, hc: 0, safeT: this.t < 0.5 ? 1.5 : 0, portalCD: 0, born: this.t,
       seed: (this.rand() * 1e9) | 0, impact: 0, lastV: 0, fear: 0,
       ch: 0, mult: 1, freefall: 0, comet: 0, cometUsed: false, bumpCD: 0, bumpV: 0, grazeCD: 0,
@@ -463,7 +500,7 @@ export class Sim {
     return this.rings[this.rings.length - 1];
   }
   maxOmega(ring) {
-    return Math.min(2.2, 2.7 / ring.r) * (ring.M.slow || 1);
+    return Math.min(2.2, 2.7 / ring.r) * (ring.M.slow || 1) * (this.ringSpeed || 1); // ringSpeed: the player's setting
   }
 
   // ---------- step ----------
@@ -512,16 +549,19 @@ export class Sim {
     this.v3Rings();
     this.p2Rings(); // v3.4 spin storm
     rockStep(this, dt); // v3.3 M10: the rocking vault leans every ring
+    this.cocoRings(dt); // 0.8.17 coco: the ring he rides swings by itself; a hard flick of it throws him off
+    this.bandRings(dt); // 0.8.18 bandit: the ring he sits on turns as he cranks it; turned briskly against him, he is shaken
     for (const ring of this.rings) {
       ring.body.setAngularVelocity(ring.omega);
       const moving = !ring.motor && !ring.follower && Math.abs(ring.omega) > 0.25;
       if (moving && !ring.moving) this.turns++;
+      if (moving) this.menaceTurnSeen(ring); // 0.8.19 the player's last turn of each ring (sim/menace.js)
       ring.moving = moving;
-      if (ring.retract) {
+      if (ring.retract && !this.stkFrozen()) { // (Tick-Tock's stopped time holds moving thorns where they are)
         const { period, on, phase = 0 } = ring.retract;
         const ph = (((this.t + phase) % period) + period) % period / period;
         const want = ph < on ? 1 : 0;
-        for (const th of ring.thorns) th.ext += clamp(want - th.ext, -dt * 5, dt * 5);
+        for (const th of ring.thorns) if (!th.mv || this.creepLive(th.mv)) th.ext += clamp(want - th.ext, -dt * 5, dt * 5); // (a moving thorn cut back to its stub stays in: sim/creeper.js)
       }
       for (const g of ring.gaps) {
         if (!g.shut || this.p2.dark > 0) continue; // v3.4 thunderclap: doors black out where they are
@@ -537,7 +577,7 @@ export class Sim {
     if (this.nestAmp) {
       const cur = this.nest.getPosition().x;
       this.nest.setLinearVelocity(Vec2((this.nestXAt(this.t) - cur) / dt, 0));
-    }
+    } else if (this.reach) this.reachStep(dt);
 
     // wind gusts, or a steady underwater current
     if (L.wind) {
@@ -549,7 +589,7 @@ export class Sim {
     } else if (this.weather === 'current') this.wind = L.weatherOpts?.strength ?? 1.4;
 
     for (const egg of this.eggs) {
-      if (!egg.alive || egg.saved) continue;
+      if (!egg.alive || egg.saved || egg.phx) continue; // (an egg in the Phoenix's talons is out of the world: sim/strike.js)
       const b = egg.body;
       egg.impact = 0;
       if (egg.crackCD > 0) egg.crackCD -= dt;
@@ -570,7 +610,8 @@ export class Sim {
       // a chick flutters: most of its weight is carried by its wings
       if (egg.chick) b.applyForceToCenter(Vec2(0, b.getMass() * (this.g - 0.4 * this.g0)), true); // net fall 0.4 g0
       if (egg.magnet > 0 && (egg.magnet -= dt) <= 0) this.unMagnet(egg);
-      if (this.wind) b.applyForceToCenter(Vec2(this.wind * this.pushK(egg) * b.getMass() * (egg.bubble > 0 ? 2.2 : 1), 0), true);
+      if (egg.joint && egg.joint.a === egg && !egg.joint.dead) this.magnetPull(egg.joint);
+      if (this.wind) b.applyForceToCenter(Vec2(this.wind * this.pushK(egg) * b.getMass() * (egg.bubble > 0 ? 2.2 : 1) * (this.weather === 'current' ? this.gripK() : 1), 0), true); // Grip (Robo Egg): a current pushes less
       if (this.water && b.isActive()) { // a little bob and sway as it drifts up
         const ph = this.t * WATER.bobW + egg.id * 1.7;
         b.applyForceToCenter(Vec2(Math.sin(ph) * WATER.sway * b.getMass(), Math.cos(ph * 1.3) * WATER.bob * b.getMass()), true);
@@ -615,7 +656,7 @@ export class Sim {
 
     for (const o of this.orbs) if (o.alive) this.moveOrb(o, dt);
     this.portals.forEach((pt, i) => {
-      if (!pt.emit || !pt.emit.length || (pt.timer -= dt) > 0) return;
+      if (!pt.emit || !pt.emit.length || this.state !== 'play' || (pt.timer -= dt) > 0) return; // (no new orbs once the level is decided: one used to pop out of thin air after the vault had burst)
       pt.timer = pt.every;
       const src = 'p' + i;
       if (this.orbs.filter((o) => o.alive && o.src === src).length >= 2) return;
@@ -630,15 +671,29 @@ export class Sim {
     this.allyStep(dt); // v3.4: after the animals move, so a knocked-out one stays knocked out
     this.chickStep(dt); // v3.2 chick kinds
     this.frogStep(cdt); // v3.3 frog
+    this.pipStep(cdt); // 0.8.17 pip
+    this.cocoStep(cdt); // 0.8.17 coco
+    this.creepStep(dt); // 0.8.18 creeper: a plant, not fooled by the decoy chick
     this.cwStep(cdt); // v4 the clockwork cast
     this.bayouStep(cdt); // v3.7 gators, turtles, mosquitoes
     if (this.weather && this.state === 'play') this.weatherStep(dt);
     if (this.state === 'play') this.v3Step(dt);
     this.p2Step(dt); // v3.4 powers
     this.stkStep(dt); // Chick Strike powers
+    if (this.pk) this.perkStep(dt); // egg skin powers
 
     if (GAP_NUDGE.acc > 0 && this.state === 'play') this.gapNudge();
-    this.world.step(dt, 8, 3);
+    // 2026-11-20 ring speeds past 350% (mykee: seasoned players want faster still): a wall edge that sweeps more than
+    // about 8 cm in one step can press an egg through (tools/test-ringspeed.mjs: none up to 3.5x, 2 in 70 k steps at 4x).
+    // While a ring turns that fast the physics takes two half steps (the forces of this step are kept for both).
+    let fast = false;
+    for (const ring of this.rings) if (Math.abs(ring.omega) * ring.r > FAST_RIM) { fast = true; break; }
+    if (fast) {
+      this.world.setAutoClearForces(false);
+      this.world.step(dt / 2, 8, 3);
+      this.world.setAutoClearForces(true);
+      this.world.step(dt / 2, 8, 3);
+    } else this.world.step(dt, 8, 3);
     this.afterStep(dt);
   }
 
@@ -678,9 +733,9 @@ export class Sim {
     const A = this.nestAmp, x0 = this.nestX0;
     const s = (u) => u * u * (3 - 2 * u);
     switch (this.nestPattern) {
-      case 'slide': { // constant speed, end to end
-        const f = (ph + 0.25) % 1;
-        return x0 + A * (f < 0.5 ? 4 * f - 1 : 3 - 4 * f);
+      case 'slide': { // near-constant speed, end to end; 2026-11-15: the ends are rounded (it used to reverse in one step)
+        const f = (ph + 0.25) % 1, e = 0.97;
+        return x0 + A * Math.asin(e * Math.sin(TAU * (f - 0.25))) / Math.asin(e);
       }
       case 'stopgo': { // glide to an end, wait there, glide back
         const f = (ph + 0.15) % 1;
@@ -698,7 +753,7 @@ export class Sim {
     this.later.length = 0;
     // impacts collected in post-solve
     for (const egg of this.eggs) {
-      if (!egg.alive || egg.saved) continue;
+      if (!egg.alive || egg.saved || egg.phx) continue;
       const v = egg.impact * (egg.water > 0 ? 0.5 : 1) * (egg.shrink > 0 ? 1.25 : 1); // water shell: landings count half; v3.4 a shrunk egg cracks easier
       // one bump per egg per BUMP_CD (a resting egg used to report one every step), unless this hit is clearly harder
       if (v > 0.6 && (egg.bumpCD <= 0 || v > egg.bumpV * 1.5)) { egg.bumpCD = BUMP_CD; egg.bumpV = v; this.emit('bump', { egg, v, on: egg.impactOn }); }
@@ -719,9 +774,9 @@ export class Sim {
       egg.ch = ch;
       const vel = egg.body.getLinearVelocity();
       egg.lastV = Math.hypot(vel.x, vel.y);
-      if (egg.inNest > 0 && egg.lastV < 1.2) {
+      if (egg.inNest > 0 && (this.reach ? this.reachRelV(egg) : egg.lastV) < 1.2) { // a running basket: settled in it
         egg.nestT += dt;
-        if (egg.nestT > 0.3) this.saveEgg(egg);
+        if (egg.nestT > 0.15) this.saveEgg(egg); // 2026-11-16: quicker, the egg then drops into the basket (render)
       } else egg.nestT = 0;
       if ((p.y - this.groundY) * this.gy < -3 || Math.abs(p.x) > 40) this.breakEgg(egg, 'lost');
     }
@@ -740,19 +795,19 @@ export class Sim {
       if (d.life <= 0) { this.world.destroyBody(d.body); this.debris.splice(i, 1); }
     }
 
-    for (const [body, fix] of this.killFix) body.destroyFixture(fix);
+    for (const [body, fix] of this.killFix) if (fix) body.destroyFixture(fix); // (a moving thorn has no fixture: sim/creeper.js)
     this.killFix.length = 0;
     for (const body of this.kill) this.world.destroyBody(body);
     this.kill.length = 0;
 
-    // snapshots for rewind (every 0.25 s, keep ~6 s)
-    if (this.state === 'play' && Math.floor(this.t * 4) !== Math.floor((this.t - DT) * 4)) {
+    // snapshots for rewind (every 0.5 s, keep 26: 13 s, so a 12 s rewind always has one to land on)
+    if (this.state === 'play' && Math.floor(this.t * 2) !== Math.floor((this.t - DT) * 2)) {
       this.snaps.push(this.snapshot());
       if (this.snaps.length > 26) this.snaps.shift();
     }
 
-    // the fuse
-    if (this.state === 'play' && this.timeLimit) {
+    // the fuse (0.8.18: it stands still while a teaching moment holds, the same for every player: src/engine/teach.js)
+    if (this.state === 'play' && this.timeLimit && !this.clockHold) {
       this.timeLeft -= dt * this.fuseRate();
       if (this.timeLeft <= 0) {
         this.timeLeft = 0;
@@ -819,6 +874,7 @@ export class Sim {
         // momentum share: lighter egg takes more of the hit
         const mo = other.getMass(), me = body.getMass();
         v = closing * (2 * mo / (mo + me)) * 0.85;
+        if (egg.joint && !egg.joint.dead && (egg.joint.a === egg ? egg.joint.b : egg.joint.a).body === other) v = Math.min(v, 1); // magnet partners clack together: never a crack
       }
       if (uo.kind === 'seg' && (uo.seg.pad || uo.seg.honey)) egg.soft = true; // v3: sponge landings are always safe
       if (uo.kind === 'seg' && uo.seg.pad) {
@@ -856,41 +912,14 @@ export class Sim {
     if (!egg || !egg.alive || egg.saved) return;
     if (other.kind === 'barrier') { this.barrierTouch(c, egg, other.barrier); return; } // predators (v3)
     if (other.kind === 'thorn') {
-      const th = other.thorn;
-      if (!th.alive) { c.setEnabled(false); return; }
-      if (egg.fire > 0) { this.defer(() => this.removeThorn(th, 'burn')); c.setEnabled(false); return; }
-      if (egg.comet) { egg.comet = 0; this.defer(() => this.removeThorn(th, 'snap')); egg.safeT = 0.2; c.setEnabled(false); return; }
-      if (egg.stone > 0) { this.emit('stoneHit', { egg }); this.defer(() => this.removeThorn(th, 'snap')); c.setEnabled(false); return; }
-      if (egg.bubbleFix) { if (!egg.popping) { egg.popping = true; egg.safeT = 0.4; this.defer(() => { egg.popping = false; this.popBubble(egg, true); }); } c.setEnabled(false); return; }
-      if (egg.golden) { egg.golden = 0; egg.safeT = 0.6; this.defer(() => this.removeThorn(th, 'snap')); this.emit('goldenSave', { egg }); c.setEnabled(false); return; }
-      if (egg.safeT > 0) return;
-      if (egg.icy > 0) return; // L15: frozen solid, a thorn can't get in
-      if (egg.chick && (th.kind === 'blunt' || this.MD.softThorns)) { egg.peckHit = th.key + 1; return; } // predators (v3): chick pecks
-      // blunt spikes (and every thorn on Easy) only crack, and stay solid; a chick has no shell
-      if ((th.kind === 'blunt' || this.MD.softThorns) && !egg.chick) {
-        // one crack per touch (never the breaking one), and the spike shoves the egg off
-        if (!egg.spk.has(th.key)) {
-          egg.spk.add(th.key);
-          this.defer(() => {
-            if (!egg.alive || egg.saved) return;
-            if (egg.cracks < 2) this.crack(egg, 0, 'spike'); // blunt: cracks, never breaks
-            const b = egg.body, p = b.getPosition(), t = th.ring.body.getWorldPoint(Vec2(th.tip * Math.cos(th.a), th.tip * Math.sin(th.a)));
-            const dx = p.x - t.x, dy = p.y - t.y, d = Math.hypot(dx, dy) || 1, m = b.getMass() * 1.6 * this.vs;
-            b.applyLinearImpulse(Vec2((dx / d) * m, (dy / d) * m), p, true);
-          });
-        }
-        return;
-      }
-      if (!GRAZE.off && !egg.chick && this.thornGraze(c, egg, th)) return; // a slow touch on the flank: near miss
-      egg.safeT = 1; // one break only
-      this.defer(() => { egg.safeT = 0; this.breakEgg(egg, 'thorn'); });
-      c.setEnabled(false);
+      this.thornTouch(c, egg, other.thorn);
     } else if (other.kind === 'seg') {
       const seg = other.seg;
       egg.freefall = 0;
       // bounce by surface: sponge and honey are dead, wood and stone give a little back
       const eb = seg.pad || seg.honey ? PAD_BOUNCE : EGG_BOUNCE[seg.ring.mat];
       if (eb !== undefined && (ua.kind === 'egg' ? fa : fb) === egg.fix) c.setRestitution(seg.pad || seg.honey ? eb : Math.max(eb, seg.ring.M.re)); // not the bubble's own skin
+      if (this.pk) this.perkSeg(c, egg); // Grip (Robo Egg): a little hold on ice
       // black fire burns through whatever ring floor the egg rests on; red fire never burns rings
       if (egg.fireKind === 'fire_black' && egg.fire > 0 && seg.alive && !seg.hardIce) {
         seg.burn += DT;
@@ -920,6 +949,54 @@ export class Sim {
     }
   }
 
+  // An egg on a thorn: the one rule of every thorn (standing: from preSolve with the contact; moving: sim/creeper.js creepTouch
+  // with a stand-in contact, since a moving thorn has no fixture).
+  thornTouch(c, egg, th) {
+    if (!th.alive) { c.setEnabled(false); return; }
+    if (egg.fire > 0) { this.defer(() => this.removeThorn(th, 'burn')); c.setEnabled(false); return; }
+    if (egg.comet) { egg.comet = 0; this.defer(() => this.removeThorn(th, 'snap')); egg.safeT = 0.2; c.setEnabled(false); return; }
+    if (egg.stone > 0) { this.emit('stoneHit', { egg }); this.defer(() => this.removeThorn(th, 'snap')); c.setEnabled(false); return; }
+    if (egg.bubbleFix) { if (!egg.popping) { egg.popping = true; egg.safeT = 0.4; this.defer(() => { egg.popping = false; this.popBubble(egg, true); }); } c.setEnabled(false); return; }
+    if (egg.golden) { egg.golden = 0; egg.safeT = 0.6; this.defer(() => this.removeThorn(th, 'snap')); this.emit('goldenSave', { egg }); c.setEnabled(false); return; }
+    if (egg.safeT > 0) return;
+    if (egg.icy > 0) return; // L15: frozen solid, a thorn can't get in
+    if (this.pk && this.pk.id === 'lava' && !egg.chick && this.perkTake('lava', egg, { th: th.key })) { egg.safeT = 0.5; this.defer(() => this.removeThorn(th, 'burn')); c.setEnabled(false); return; } // Hot Shell: the first thorn burns away
+    if (egg.chick && (th.kind === 'blunt' || this.MD.softThorns || th.baby)) { egg.peckHit = th.key + 1; return; } // predators (v3): chick pecks
+    // blunt spikes (and every thorn on Easy) only crack, and stay solid; a chick has no shell
+    if ((th.kind === 'blunt' || this.MD.softThorns || th.baby) && !egg.chick) { // (th.baby: the first moving thorn a player meets only shoves, sim/creeper.js)
+      // one crack per touch (never the breaking one), and the spike shoves the egg off
+      if (!egg.spk.has(th.key)) {
+        egg.spk.add(th.key);
+        if (th.mv) { this.creepBit(th); egg.safeT = Math.max(egg.safeT || 0, 1.5); } // (a moving thorn comes after the egg it shoved: time to get clear before it can crack again)
+        this.defer(() => {
+          if (!egg.alive || egg.saved) return;
+          if (egg.cracks < 2 && !th.baby) this.crack(egg, 0, 'spike'); // blunt: cracks, never breaks
+          const b = egg.body, p = b.getPosition(), t = th.ring.body.getWorldPoint(Vec2(th.tip * Math.cos(th.a), th.tip * Math.sin(th.a)));
+          const dx = p.x - t.x, dy = p.y - t.y, d = Math.hypot(dx, dy) || 1, m = b.getMass() * 1.6 * this.vs;
+          b.applyLinearImpulse(Vec2((dx / d) * m, (dy / d) * m), p, true);
+        });
+      }
+      return;
+    }
+    if (!GRAZE.off && !egg.chick && this.thornGraze(c, egg, th)) return; // a slow touch on the flank: near miss
+    if (this.pk && this.pk.id === 'dino' && this.perkTake('dino', egg)) { // Thick Shell: the first popping thorn only cracks it, and it is shoved off
+      egg.safeT = 1.4; egg.spk.add(th.key); c.setEnabled(false); // long enough to be pushed clear of this thorn
+      this.defer(() => {
+        if (!egg.alive || egg.saved) return;
+        if (egg.cracks < 2) this.crack(egg, 0, 'spike');
+        const b = egg.body, p = b.getPosition(), t = th.ring.body.getWorldPoint(Vec2(th.tip * Math.cos(th.a), th.tip * Math.sin(th.a)));
+        const dx = p.x - t.x, dy = p.y - t.y, d = Math.hypot(dx, dy) || 1, m = b.getMass() * 2.6 * this.vs;
+        b.setLinearVelocity(Vec2(0, 0));
+        b.applyLinearImpulse(Vec2((dx / d) * m, (dy / d) * m), p, true);
+      });
+      return;
+    }
+    egg.safeT = 1; // one break only
+    if (th.mv) this.creepBit(th);
+    this.defer(() => { egg.safeT = 0; this.breakEgg(egg, 'thorn'); });
+    c.setEnabled(false);
+  }
+
   postSolve() {}
 
   // Thorn grace. True = this touch is a graze: the thorn stays solid, the egg is shoved off, 'graze' is emitted once.
@@ -938,6 +1015,7 @@ export class Sim {
       if ((ax * ex + ay * ey) / ((Math.hypot(ax, ay) || 1) * (Math.hypot(ex, ey) || 1)) > GRAZE.tip) return false;
     }
     const ve = eb.getLinearVelocityFromWorldPoint(pt), vt = rb.getLinearVelocityFromWorldPoint(pt);
+    if (th.mv && th.mv.spd > 0) { const A = rb.getAngle() + th.a, sv = th.mv.spd * Math.sign(th.mv.to - th.mv.from); vt.x -= Math.sin(A) * sv; vt.y += Math.cos(A) * sv; } // a moving thorn's own slide (sim/creeper.js)
     const p = eb.getPosition();
     let nx = p.x - pt.x, ny = p.y - pt.y; const d = Math.hypot(nx, ny) || 1; nx /= d; ny /= d; // thorn -> egg
     const closing = (vt.x - ve.x) * nx + (vt.y - ve.y) * ny;
@@ -1007,6 +1085,7 @@ export class Sim {
   // n = cracks to add (the crack ladder can add two at once). 3 cracks = broken.
   crack(egg, v, why = 'impact', n = 1) {
     if (!egg.alive || egg.saved || egg.chick || egg.stone > 0 || egg.guard > 0 || egg.clamp > 0 || egg.icy > 0) return; // a chick never cracks; stone, the feather, a snapping turtle's beak (v3.7) and the gecko's ice (L15) take it
+    if (this.pk && this.pk.id === 'speckled' && this.perkTake('speckled', egg, { why })) { egg.crackCD = CRACK_COOLDOWN; return; } // Lucky Freckles: the first crack is shrugged off
     egg.cracks += n;
     egg.crackCD = CRACK_COOLDOWN;
     const p = egg.body.getPosition();
@@ -1018,10 +1097,15 @@ export class Sim {
     if (!egg.alive || egg.saved) return;
     if (egg.guard > 0 && !GUARD_PASS.has(why)) return; // v3 guardian feather
     if (egg.clamp > 0 && !GUARD_PASS.has(why)) return; // v3.7 held by a snapping turtle
+    if ((why === 'impact' || why === 'fall') && this.pk && this.pk.id === 'pearl' && !egg.chick && this.perkTake('pearl', egg, { why })) { // Pearl Shine: the first hard landing that would break it leaves it on its last crack
+      egg.cracks = 2; egg.crackCD = CRACK_COOLDOWN; egg.safeT = Math.max(egg.safeT, 0.5);
+      return;
+    }
     egg.alive = false;
     const b = egg.body;
     const p = b.getPosition(), vel = b.getLinearVelocity(), a = b.getAngle();
     this.emit('break', { egg, why, x: p.x, y: p.y, vx: vel.x, vy: vel.y });
+    if (this.reach) this.reachBroken(egg, why, p);
     if (egg.joint) this.unMagnet(egg);
     // shell shards as physics debris
     const n = 7;
@@ -1045,6 +1129,7 @@ export class Sim {
     const pts = 100 * egg.mult * (perfect ? 2 : 1) * (egg.cometUsed === true ? 2 : 1) * this.combo;
     this.savedLog.push({ id: egg.id, t: this.t, cracks: egg.cracks, pts, mult: egg.mult, combo: this.combo, prize: egg.prize, chick: egg.chick });
     this.emit('save', { egg, x: p.x, y: p.y, n: this.savedLog.length, pts, perfect, combo: this.combo, mult: egg.mult });
+    if (this.reach) this.reachSaved(egg, p);
     if (egg.joint) this.unMagnet(egg);
     this.kill.push(egg.body);
   }
@@ -1151,6 +1236,29 @@ export class Sim {
     this.emit('magnetOn', { egg, other: best });
   }
 
+  // The magnet's pull (2026-11-20, mykee: "the force of attraction is not strong enough"). The rope alone only stopped the
+  // pair drifting apart; now the two eggs really attract for the 8 s: the one behind (further in) is hauled hard toward
+  // the one in front, which feels only a light tug back, so the pair is never held up by its own magnet. In the same
+  // chamber they rush together and clack. Stronger the closer they are, nothing once they touch (no squeezing).
+  magnetPull(J) {
+    const A = J.a, B = J.b;
+    if (!A.alive || !B.alive || A.saved || B.saved || A.phx || B.phx) return;
+    const pa = A.body.getPosition(), pb = B.body.getPosition(), dx = pb.x - pa.x, dy = pb.y - pa.y, d = Math.hypot(dx, dy);
+    const ease = Math.min(1, (d - EGG_W) / 0.2);
+    if (ease <= 0) { J.pull = 0; return; }
+    const ux = dx / d, uy = dy / d, ca = this.channelOf(A), cb = this.channelOf(B);
+    const s = Math.max(0.6, Math.min(1.3, 1.6 / d)) * ease * this.g0;
+    let ka = ca === cb ? MAGNET.same : ca < cb ? MAGNET.pull : MAGNET.lead, kb = ca === cb ? MAGNET.same : cb < ca ? MAGNET.pull : MAGNET.lead;
+    // an egg already moving toward its partner at vmax is not pushed any faster: hauled through a gap it would land harder
+    // than a plain fall and crack (CRACK_V 6), which a helping power must never do
+    const va = A.body.getLinearVelocity(), vb = B.body.getLinearVelocity();
+    if (va.x * ux + va.y * uy > MAGNET.vmax) ka = 0;
+    if (-(vb.x * ux + vb.y * uy) > MAGNET.vmax) kb = 0;
+    A.body.applyForceToCenter(Vec2(ux * s * ka * A.body.getMass(), uy * s * ka * A.body.getMass()), true);
+    B.body.applyForceToCenter(Vec2(-ux * s * kb * B.body.getMass(), -uy * s * kb * B.body.getMass()), true);
+    J.pull = s / this.g0; J.ka = ka; J.kb = kb; // for the look (render/magnet.js)
+  }
+
   unMagnet(egg) {
     const J = egg.joint;
     if (!J) return;
@@ -1163,8 +1271,13 @@ export class Sim {
 
   removeThorn(th, how) {
     if (!th.alive) return;
-    th.alive = false;
-    this.killFix.push([th.ring.body, th.fix]);
+    if (th.mv && how !== 'snip') { // a moving thorn (sim/creeper.js) is cut back to its stub and grows back; only Thorn Snips take it for good
+      if (!this.creepLive(th.mv)) return;
+      this.creepCut(th);
+    } else {
+      th.alive = false;
+      this.killFix.push([th.ring.body, th.fix]);
+    }
     const b = th.ring.body;
     const wp = b.getWorldPoint(Vec2(((th.base + th.tip) / 2) * Math.cos(th.a), ((th.base + th.tip) / 2) * Math.sin(th.a)));
     this.emit(how === 'burn' ? 'thornBurn' : 'thornSnap', { x: wp.x, y: wp.y, thorn: th });
@@ -1206,6 +1319,10 @@ export class Sim {
     const loc = (rad, ang) => ({ x: rad * Math.cos(ang) - r, y: rad * Math.sin(ang) });
     const verts = [loc(ri, -half), loc(ro, -half), loc(ro, half), loc(ri, half)];
     const out = how === 'blast' ? 3.5 : 0.6;
+    if (quiet && how === 'blast') { // the level-clear burst: every piece its own speed and spin, so the vault scatters instead of swelling as dotted circles; under water (hardly any gravity) the pieces are gone in a second
+      const sp = out * (0.55 + 1.1 * this.rand()), ja = wa + (this.rand() - 0.5) * 0.9;
+      this.addDebris(ring.mat, verts, x, y, wa, Math.cos(ja) * sp, Math.sin(ja) * sp + 1 * this.gy, (this.rand() - 0.5) * 12, this.water ? 0.9 + 0.5 * this.rand() : 2.8, { mat: ring.mat });
+    } else
     this.addDebris(how === 'burn' ? 'char' : ring.mat, verts, x, y, wa, Math.cos(wa) * out + (this.rand() - 0.5), Math.sin(wa) * out + 1, (this.rand() - 0.5) * 6, how === 'burn' ? 1.6 : 2.8, { mat: ring.mat });
     if (!quiet) this.emit(how === 'burn' ? 'segBurn' : how === 'blast' ? 'segBlast' : 'segBreak', { x, y, mat: ring.mat });
   }
@@ -1311,7 +1428,10 @@ export class Sim {
     if (!end) this.clashStep(dt);
     else this.salEndStep(dt); // v3.2: the salamander dives (win) or grins (loss); in play boss.js v31Step drives it
     this.seaStep(dt, end); // v3.3: octopus and fish schools
+    this.menaceStep(dt); // 0.8.19 the menace engine first: heat, tokens, the breather
     this.thiefStep(dt); // v3.6: the weasel and the rats (sim/thieves.js)
+    this.bandStep(dt); // 0.8.17 bandit
+    this.kitStep(dt); // 0.8.18 kits
     this.reefStep(dt, end); // world 8: hermit crabs, puffers, jellyfish, the King Crab
     for (const b of this.barriers) if (b.alive && b.fire && (b.burn += dt / BURN_T) >= 1) this.removeBarrier(b, 'burn');
     if (this.eagle) this.eagleStep(dt); // after the level ends it flees (win) or gloats (loss)
@@ -2208,7 +2328,12 @@ export class Sim {
     if (E && (E.phase === 'warn' || E.phase === 'dive') && E.tk !== 'snake' && E.tk !== 'orb') lv = Math.max(lv, E.reach ? 0.9 : 0.5);
     if (this.sals && this.sals.length) for (const e of this.aliveEggs()) lv = Math.max(lv, 0.7 * this.salThreat(e)); // v3.2: a breath aimed at an egg
     if (this.thieves.length) for (const e of this.aliveEggs()) lv = Math.max(lv, 0.8 * this.thiefThreat(e)); // v3.6: the thieves
+    if (this.band) for (const e of this.aliveEggs()) lv = Math.max(lv, 0.8 * this.bandThreat(e)); // 0.8.17 bandit
+    if (this.kit) for (const e of this.aliveEggs()) lv = Math.max(lv, 0.8 * this.kitThreat(e)); // 0.8.18 kits
     if (this.gators && (this.gators.length || this.mosqs.length)) for (const e of this.aliveEggs()) lv = Math.max(lv, 0.9 * this.bayouThreat(e)); // v3.7
+    if (this.pips && this.pips.length) for (const e of this.aliveEggs()) lv = Math.max(lv, 0.5 * this.pipThreat(e)); // 0.8.17 pip: not wicked, a mild cue
+    if (this.cocos && this.cocos.length) for (const e of this.aliveEggs()) lv = Math.max(lv, 0.5 * this.cocoThreat(e)); // 0.8.17 coco: cheeky, a mild cue
+    if (this.creeps && this.creeps.length) for (const e of this.aliveEggs()) lv = Math.max(lv, 0.6 * this.creepThreat(e)); // 0.8.18 creeper
     lv = Math.round(lv * 10) / 10;
     if (lv !== this.danger) { this.danger = lv; this.emit('danger', { level: lv }); }
   }
@@ -2335,7 +2460,7 @@ export class Sim {
     return false;
   }
 
-  // ---------- rewind ----------
+  // ---------- rewind (REWIND_S back; a run shorter than that goes back to its first snapshot) ----------
   // Snapshots are full world states (rings, burnt/broken segments, thorns, shutters, honey, eggs with
   // their powers and magnet ropes, orbs, bombs, rocks, snake, weather, nest), so a rewind is exact.
   snapshot() {
@@ -2347,7 +2472,7 @@ export class Sim {
   }
 
   // Returns a new Sim holding the world as it was about `seconds` ago; the caller swaps it in.
-  rewind(seconds = 5) {
+  rewind(seconds = REWIND_S) {
     const want = this.t - seconds;
     let snap = this.snaps[0];
     for (const s of this.snaps) if (s.t <= want) snap = s;
@@ -2367,6 +2492,7 @@ export class Sim {
     const EGG_KEYS = ['id', 'alive', 'saved', 'cracks', 'fire', 'fireKind', 'stone', 'bubble', 'golden', 'crackCD', 'safeT', 'portalCD', 'ch', 'mult', 'freefall', 'comet', 'cometUsed', 'seed', 'magnet', 'water', 'zap', 'glow', 'chick', 'meteor', 'honey', 'honeyCD', 'prize'];
     EGG_KEYS.push('peckK', 'peckT', 'peckHit'); // predators (v3)
     EGG_KEYS.push('kind', 'guard', 'rockskin', 'curse', 'drop', 'lavaCD', 'fled'); // v3
+    EGG_KEYS.push('sbub'); // the Bubble Chick's bubble (sim/strike.js)
     EGG_KEYS.push(...CHICK_KEYS); // v3.2 chick kinds
     EGG_KEYS.push('hotK'); // v3.2: the salamander breath that last scorched it
     EGG_KEYS.push('octo'); // v3.3: held by octopus (id + 1)
@@ -2376,6 +2502,7 @@ export class Sim {
     EGG_KEYS.push('clamp'); // v3.7: held by a snapping turtle (id + 1)
     EGG_KEYS.push('grazeCD'); // v4.1: thorn grace cooldown
     EGG_KEYS.push('icy'); // L15: frozen by the frost gecko's lick
+    EGG_KEYS.push('iceA', 'iceN', 'iceD', 'iceBy'); // 0.8.19 (aggroB): the shakes that crack the ice
     return {
       t: this.t, timeLeft: this.timeLeft, state: this.state, endTimer: this.endTimer, rs: this.rs, mode: this.mode,
       savedLog: this.savedLog.map((x) => ({ ...x })), combo: this.combo, lastSaveT: this.lastSaveT, nextEggId: this.nextEggId,
@@ -2398,7 +2525,7 @@ export class Sim {
       pred: this.predState(), // predators (v3)
       wx: { ...this.wx, bolt: this.wx.bolt ? { ...this.wx.bolt } : null },
       embers: this.embers.map((m) => ({ ...m })),
-      nest: bodyS(this.nest),
+      nest: bodyS(this.nest), hr: this.reach ? this.reachState() : null,
       v3: this.v3State(),
       v31: v31State(this), // bosses (v3.1)
       chick: this.chickState(), // v3.2
@@ -2409,9 +2536,16 @@ export class Sim {
       p2: this.p2State(), // v3.4 powers
       stk: this.stkState(), // Chick Strike powers
       thieves: this.thiefState(), // v3.6 the weasel and the rats
+      pip: this.pipState(), // 0.8.17 pip
+      coco: this.cocoState(), // 0.8.17 coco
+      creep: this.creepState(), // 0.8.18 creeper
+      band: this.bandState(), // 0.8.17 bandit
+      mn: this.menaceState(), // 0.8.19 the menace engine
+      kit: this.kitState(), // 0.8.18 kits
       reef: this.reefState(), // world 8
       cw: this.cwState(), owl: this.owlState(), // v4 the clockwork cast and the Clockwork Owl
       bayou: this.bayouState(), // v3.7 Gator Bayou
+      perk: this.perkState(), // egg skin powers: what is used up
     };
   }
 
@@ -2427,7 +2561,7 @@ export class Sim {
       r.stun = rs.stun || 0;
       r.moving = rs.moving;
       rs.segs.forEach(([alive, hp, burn], k) => { const g = r.segs[k]; g.hp = hp; g.burn = burn; if (!alive && g.alive) { g.alive = false; r.body.destroyFixture(g.fix); } });
-      rs.thorns.forEach(([alive, ext], k) => { const h = r.thorns[k]; h.ext = ext; if (!alive && h.alive) { h.alive = false; r.body.destroyFixture(h.fix); } });
+      rs.thorns.forEach(([alive, ext], k) => { const h = r.thorns[k]; h.ext = ext; if (!alive && h.alive) { h.alive = false; if (h.fix) r.body.destroyFixture(h.fix); } });
       (rs.gaps || []).forEach((o, k) => { r.gaps[k].o = o; });
       (rs.honey || []).forEach((d, k) => { r.honey[k].dry = d; });
     });
@@ -2470,13 +2604,21 @@ export class Sim {
     sim.p2Load(S.p2); // v3.4 powers
     sim.stkLoad(S.stk); // Chick Strike powers
     sim.thiefLoad(S.thieves); // v3.6 the weasel and the rats
+    sim.pipLoad(S.pip); // 0.8.17 pip
+    sim.cocoLoad(S.coco); // 0.8.17 coco
+    sim.creepLoad(S.creep); // 0.8.18 creeper
+    sim.bandLoad(S.band); // 0.8.17 bandit
+    sim.menaceLoad(S.mn); // 0.8.19 the menace engine
+    sim.kitLoad(S.kit); // 0.8.18 kits
     sim.reefLoad(S.reef); // world 8
     sim.cwLoad(S.cw); sim.owlLoad(S.owl); // v4
     sim.bayouLoad(S.bayou); // v3.7 Gator Bayou
+    sim.perkLoad(S.perk); // egg skin powers
     sim.events.length = 0;
     S.bombs.forEach((bs, i) => { const b = sim.bombs[i]; Object.assign(b, { lit: bs.lit, fuse: bs.fuse }); if (!bs.alive) { b.alive = false; sim.world.destroyBody(b.body); } else setB(b.body, bs.b); });
     S.rocks.forEach((rs, i) => setB(sim.rocks[i].body, rs.b));
     setB(sim.nest, S.nest);
+    if (sim.reach) sim.reachLoad(S.hr);
     sim.rs = S.rs; // re-creating eggs and orbs above drew from the rng
     sim.snaps = [];
     return sim;
@@ -2585,8 +2727,8 @@ export class Sim {
     if (egg.golden) { egg.golden = 0; egg.safeT = 0.6; this.emit('goldenSave', { egg }); return; }
     if (egg.safeT > 0) return;
     const key = 'c' + ring.i + ':' + ring.gaps.indexOf(g);
-    if (this.MD.softThorns && !egg.chick) {
-      // Easy: a crack (never the breaking one) and a shove off, once per touch
+    if ((this.MD.softThorns || this.level.softCurtain) && !egg.chick) {
+      // Easy, and the level that first teaches the curtain (level.softCurtain): a crack (never the breaking one) and a shove off, once per touch
       if (!egg.spk.has(key)) {
         egg.spk.add(key);
         this.defer(() => {
@@ -2696,6 +2838,11 @@ export class Sim {
     off('guardT', 'feather');
     off('skinT', 'rockskin');
     off('curseT', 'curse');
+    if (this.scareT > 0) { // the Scarecrow: whoever is in the vault, or comes in, is scared off again and again until it falls
+      const first = this.scareT === SCARE_S;
+      if ((this.scareTick -= DT) <= 0) { this.scareTick = 0.6; this.scareQuiet = !first; this.p2All('scare', Math.min(2.5, this.scareT + 0.6)); this.scareQuiet = false; }
+      off('scareT', 'scarecrow');
+    }
     if (this.curseT > 0 && (this.jitT -= DT) <= 0) {
       this.jitT = 0.18; // cursed eggs twitch
       for (const e of this.aliveEggs()) if (e.curse > 0 && e.honey <= 0) { const m = e.body.getMass(); e.body.applyLinearImpulse(Vec2((this.rand() - 0.5) * 0.8 * m, this.rand() * 0.4 * m), e.body.getPosition(), true); }
@@ -2726,7 +2873,7 @@ export class Sim {
         this.emit('vineClose', { x: q.x, y: q.y, ring: ring.i });
       }
     }
-    this.lavaStep(dt);
+    if (!this.stkFrozen()) this.lavaStep(dt); // Tick-Tock: lava rocks hang where they are
     v31Step(this, dt); // bosses (v3.1): boss attacks, falling ice (replaces the old top-down icicles), walls, ring locks
   }
 
@@ -2761,33 +2908,38 @@ export class Sim {
   lavaStep(dt) {
     const LV = this.level.lava;
     if (LV && typeof LV === 'object' && (this.v3T.lava -= dt) <= 0) {
-      this.v3T.lava = LV.every || 7;
+      // 0.8.19 (aggroB): the volcano throws them (sim/salamander.js VOLC): the same seeded targets, sparser, a rumble first
+      const vb = !!this.salHot;
+      this.v3T.lava = (LV.every || 7) * (vb ? VOLC.every : 1);
       const ri = Math.floor(this.rand() * this.rings.length), ring = this.rings[ri];
       const wa = -Math.PI / 2 + (this.rand() - 0.5) * Math.PI * 1.3;
-      const k = { ri, la: wa - ring.body.getAngle(), ph: 'fly', t: 0, x0: (this.rand() - 0.5) * this.outerR, y0: this.outerR + 3, x: 0, y: 0 };
+      const k = { ri, la: wa - ring.body.getAngle(), ph: vb ? 'rumble' : 'fly', t: 0, x0: (this.rand() - 0.5) * this.outerR, y0: this.outerR + 3, x: 0, y: 0, v: vb ? 1 : 0 };
+      if (vb) { k.x0 = VOLC.x * this.outerR; k.y0 = this.outerR + VOLC.y; }
       const q = this.rockAt(k);
       k.x = k.x0; k.y = k.y0;
       this.lavaRocks.push(k);
-      this.emit('lavaWarn', { x: q.x, y: q.y, ring: ri });
+      this.emit(vb ? 'volcRumble' : 'lavaWarn', { x: q.x, y: q.y, ring: ri, t: VOLC.rumble + VOLC.fly });
     }
     for (let i = this.lavaRocks.length - 1; i >= 0; i--) {
       const k = this.lavaRocks[i], q = this.rockAt(k);
       k.t += dt;
+      if (k.ph === 'rumble') { k.x = q.x; k.y = q.y; if (k.t >= VOLC.rumble) { k.ph = 'fly'; k.t = 0; this.emit('lavaWarn', { x: q.x, y: q.y, ring: k.ri, volc: 1 }); } continue; } // 0.8.19 the mountain rumbles and puffs
       if (k.ph === 'fly') {
-        const f = Math.min(1, k.t / ROCK_FLY);
+        const f = Math.min(1, k.t / (k.v ? VOLC.fly : ROCK_FLY));
         k.x = k.x0 + (q.x - k.x0) * f;
         k.y = k.y0 + (q.y - k.y0) * f + 1.6 * Math.sin(Math.PI * f);
         if (f >= 1) {
           k.ph = 'sit'; k.t = 0;
-          this.emit('lavaLand', { x: q.x, y: q.y, ring: k.ri });
+          this.emit('lavaLand', { x: q.x, y: q.y, ring: k.ri, volc: k.v ? 1 : 0 });
           animalsHit(this, 'rock', { x: q.x, y: q.y, r: 0.75 }); // v3.1: animals feel it too
+          if (k.v && this.salHot) { this.salHeatArc(k.ri, k.la, VOLC.len); continue; } // 0.8.19: a volcano bomb makes its section red-hot (the salamander's hot rule)
           if (this.rockHits(k, q, 0.75)) { this.lavaRocks.splice(i, 1); continue; }
         }
         continue;
       }
       k.x = q.x; k.y = q.y;
       for (const S of this.snakesNear(q.x, q.y, 0.5)) if (!(S.stun > 0)) this.hitSnake(S, 'lava', { x: q.x, y: q.y });
-      if (this.rockHits(k, q, 0.4)) { this.lavaRocks.splice(i, 1); continue; }
+      if (!k.v && this.rockHits(k, q, 0.4)) { this.lavaRocks.splice(i, 1); continue; } // (a volcano bomb's heat does the cracking)
       if (k.t >= ROCK_SIT) {
         const ring = this.rings[k.ri], half = HOLE_LEN / (2 * ring.r);
         for (const sg of ring.segs) if (sg.alive && Math.abs(wrap((sg.a0 + sg.a1) / 2 - k.la)) < half) { sg.melt = HOLE_T; sg.vh = 0; }
@@ -2815,14 +2967,14 @@ export class Sim {
 
   v3State() {
     return {
-      slowT: this.slowT, curseT: this.curseT, jitT: this.jitT, guardT: this.guardT || 0, skinT: this.skinT || 0, v3T: { ...this.v3T },
+      slowT: this.slowT, curseT: this.curseT, jitT: this.jitT, guardT: this.guardT || 0, skinT: this.skinT || 0, scareT: this.scareT || 0, scareTick: this.scareTick || 0, v3T: { ...this.v3T },
       lavaRocks: this.lavaRocks.map((k) => ({ ...k })), icicles: this.icicles.map((c) => ({ ...c })),
       rings: this.rings.map((r) => ({ melt: r.segs.map((g) => g.melt || 0), cur: r.gaps.map((g) => (g.curtain ? [g.curtain.alive, g.curtain.burn, g.curtain.burning, g.curtain.u, g.curtain.w] : null)) })),
     };
   }
   v3Restore(V) {
     if (!V) return;
-    Object.assign(this, { slowT: V.slowT, curseT: V.curseT, jitT: V.jitT, guardT: V.guardT, skinT: V.skinT, v3T: { ...V.v3T } });
+    Object.assign(this, { slowT: V.slowT, curseT: V.curseT, jitT: V.jitT, guardT: V.guardT, skinT: V.skinT, scareT: V.scareT || 0, scareTick: V.scareTick || 0, v3T: { ...V.v3T } });
     this.lavaRocks = V.lavaRocks.map((k) => ({ ...k }));
     this.icicles = V.icicles.map((c) => ({ ...c }));
     V.rings.forEach((rs, i) => {
@@ -2839,8 +2991,15 @@ export class Sim {
   }
 
   // ---------- queries ----------
+  // the player calls it a day once enough eggs are home (a creature sits on the last egg, an egg is wedged): the level
+  // ends as a win with the eggs saved so far
+  finish() {
+    if (this.state !== 'play' || this.savedLog.length < (this.level.target || 1)) return false;
+    this.state = 'winning'; this.endTimer = 0.5;
+    return true;
+  }
   aliveEggs() {
-    return this.eggs.filter((e) => e.alive && !e.saved);
+    return this.eggs.filter((e) => e.alive && !e.saved && !e.phx); // an egg the Phoenix is flying home is no one's to touch
   }
   channelOf(egg) {
     const p = egg.body.getPosition();
@@ -2860,6 +3019,7 @@ export class Sim {
 }
 
 Object.assign(Sim.prototype, chickMethods); // v3.2 chick kinds (sim/chicks.js)
+Object.assign(Sim.prototype, menaceMethods); // 0.8.19 the menace engine (sim/menace.js)
 Object.assign(Sim.prototype, salMethods); // v3.2 lava salamander (sim/salamander.js)
 Object.assign(Sim.prototype, frogMethods); // v3.3 frog (sim/frog.js)
 Object.assign(Sim.prototype, allyMethods); // v3.4 farm allies (sim/allies.js)
@@ -2868,8 +3028,16 @@ Object.assign(Sim.prototype, p2Methods); // v3.4 powers and combos (sim/powers2.
 Object.assign(Sim.prototype, warpMethods); // v3.4 warp gate (sim/warp.js)
 Object.assign(Sim.prototype, bayouMethods); // v3.7 Gator Bayou (sim/bayou.js)
 Object.assign(Sim.prototype, thiefMethods); // v3.6 the egg thieves (sim/thieves.js)
+Object.assign(Sim.prototype, pipMethods); // 0.8.17 pip
+Object.assign(Sim.prototype, creepMethods); // 0.8.18 creeper
+Object.assign(Sim.prototype, cocoMethods); // 0.8.17 coco
+Object.assign(Sim.prototype, banditMethods); // 0.8.17 bandit (sim/bandit.js)
+Object.assign(Sim.prototype, kitMethods); // 0.8.18 kits: mama raccoon and her kits (sim/kits.js)
 Object.assign(Sim.prototype, reefMethods, kcMethods); // world 8 Coral Reef (sim/reef.js, sim/kingcrab.js)
+Object.assign(Sim.prototype, urchinMethods); // 0.8.17 urchin (sim/urchin.js; built, stepped and saved through reef.js)
 Object.assign(Sim.prototype, cwMethods, owlMethods); // v4 the clockwork cast, the Clockwork Owl
 Object.assign(Sim.prototype, stkMethods); // Chick Strike powers (sim/strike.js)
+Object.assign(Sim.prototype, perkMethods); // egg skin powers (sim/perks.js)
+Object.assign(Sim.prototype, reachMethods); // the hen runs the basket (sim/henreach.js)
 
 export { EGG_H, EGG_W, RING_TH };

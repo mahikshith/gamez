@@ -6,10 +6,15 @@
 // and hits (stkHit). Target: what the player tapped in the last 1.5 s, else the boss, else the creature nearest an egg.
 // A boss struck during its telegraph loses that attack (and an hp if it has them); a bomb always interrupts it.
 //
+// Premium chicks (2026-11-16) aim at eggs or at time itself: the Phoenix flies the egg in the most danger home (once a
+// level, its meter fills half as fast), Tick-Tock stops every villain and hazard for a while (the level clock pays for it),
+// the Bubble Chick wraps every egg in a bubble nothing can hurt (light eggs float and steer badly, then pop with a shove).
+// The two start boosts that act in the level (Thorn Snips) live here too: stkSnipStep.
+//
 // Nothing here runs unless a strike is fired: the meter is data only, and stkDt() returns dt unchanged without a rage,
 // so a level played without the button simulates exactly as before (the planner never strikes).
 import { Vec2 } from 'planck';
-import { STRIKE, CHARGE, FLIGHT } from '../data/strikes.js';
+import { STRIKE, CHARGE, FLIGHT, EGG_STRIKES } from '../data/strikes.js';
 
 const DT = 1 / 120;
 const PICK_R = 0.9; // m: a tap this close to a creature picks it
@@ -20,16 +25,21 @@ export const stkMethods = {
     const id = STRIKE[this.opts.strike] ? this.opts.strike : null, L = this.level;
     const any = !!(L.bossFight || this.snakes.length || (this.sals || []).length || this.eagle || (this.thieves || []).length || (this.frogs || []).length
       || (this.octos || []).length || (this.schools || []).length || (this.hermits || []).length || (this.puffs || []).length || (this.jellies || []).length
-      || this.kc || (this.cw && this.cwAny()) || (this.gators || []).length || (this.turtles || []).length || (this.mosqs || []).length);
+      || this.kc || (this.cw && this.cwAny()) || (this.gators || []).length || (this.turtles || []).length || (this.mosqs || []).length
+      || (this.pips || []).length
+      || (this.urchins || []).length // 0.8.17 urchin
+      || (this.cocos || []).length); // 0.8.17 coco
     this.stk = {
       id, any, on: !!(id && any), m: id && this.mode === 'easy' ? CHARGE.easy : 0, base: CHARGE.base, uses: 0, full: 0, saved: 0,
       fly: null, fx: [], glue: [], held: {}, gl: [], rage: 0, dcy: 0, n: 0,
+      spent: 0, phx: null, tock: 0, tockRe: 0, tick: 0, // premium chicks: the Phoenix's one flight and its carry, Tick-Tock's stopped time
+      snip: this.opts.snips ? { list: null, i: 0, t: 0.9, iv: 0.15, per: 1 } : null, // Thorn Snips (start boost): every thorn on the rings at the start, the first a beat in
     };
     this.stkEv = 0;
   },
   stkEquip(id) { const K = this.stk; if (!K) return; K.id = STRIKE[id] ? id : null; K.on = !!(K.id && K.any); },
   stkOn() { return !!(this.stk && this.stk.on); },
-  stkReady() { const K = this.stk; return !!K && K.on && K.m >= 1 && !K.fly && this.state === 'play'; },
+  stkReady() { const K = this.stk; return !!K && K.on && K.m >= 1 && !K.fly && !K.phx && !K.spent && this.state === 'play'; },
   // creature time while the decoy's victims rage
   stkDt(dt) { const K = this.stk; return K && K.rage > 0 ? dt * STRIKE.decoy.fast : dt; },
 
@@ -51,6 +61,7 @@ export const stkMethods = {
     (this.puffs || []).forEach((P, i) => { if (P.ph !== 'wait' && P.ph !== 'gone') add('pu' + i, 'puff', P, this.puffXY(P)); });
     (this.jellies || []).forEach((J, i) => { if (J.ph === 'float' || J.ph === 'in') add('je' + i, 'jelly', J, J); });
     if (this.kc && !this.kc.done) add('kc', 'kc', this.kc, { x: this.kc.bx, y: this.kc.by }, true);
+    this.urTargets?.(add); // 0.8.17 urchin
     if (this.cw) {
       this.cw.sp.forEach((S, i) => { if (S.ph !== 'flung' && S.ph !== 'wait') add('sp' + i, 'spider', S, this.cwSpider(S)); });
       this.cw.bt.forEach((B, i) => { if (B.ph !== 'wait') add('bt' + i, 'beetle', B, this.cwXY(B)); });
@@ -59,25 +70,70 @@ export const stkMethods = {
     (this.gators || []).forEach((G, i) => { if (!['hid', 'gone', 'beaten'].includes(G.ph)) add('ga' + i, 'gator', G, G, !!G.boss); });
     (this.turtles || []).forEach((T, i) => { if (T.ph !== 'gone') add('tu' + i, 'turtle', T, T); });
     (this.mosqs || []).forEach((Q, i) => { if (Q.ph !== 'scatter') add('mq' + i, 'mosq', Q, Q); });
+    (this.pips || []).forEach((P) => { if (this.pipLive(P)) add('pp' + P.id, 'pip', P, this.pipBody(P)); }); // 0.8.17 pip
+    (this.cocos || []).forEach((C) => { if (this.cocoLive(C)) add('cc' + C.id, 'coco', C, this.cocoBody(C)); }); // 0.8.17 coco
     const B = this.bx && this.bx.boss;
     if (B && !['snake', 'salamander', 'kingcrab', 'gator'].includes(B.kind) && !(B.kind === 'blizzard' && this.geckoOf && this.geckoOf()) && !(B.kind === 'golem' && this.duke && this.duke()) && !B.den && !(B.kind === 'owl' && this.owl && this.owl.down)) add('bx', 'bx', B, B, true);
     return out;
   },
-  // what the strike goes for: a recent tap (pick), else the boss, else the creature nearest an egg
+  // what the strike goes for: a recent tap (pick), else the villain putting an egg in the most danger right now
+  // (mykee 2026-11-16: players fire when they are in deep trouble, so the chick must hit whoever is about to take an egg,
+  // not the big boss across the vault). Danger = distance to the nearest egg (a villain carrying or clamping an egg is at
+  // ~0, so it comes first); the boss only wins a near tie.
   stkChoose(pick) {
     const L = this.stkTargets();
     if (!L.length) return null;
     if (pick) { const P = L.find((e) => e.key === pick); if (P) return P; }
-    const boss = L.find((e) => e.boss);
-    if (boss) return boss;
     const eggs = this.aliveEggs().map((e) => e.body.getPosition());
-    if (!eggs.length) return L[0];
+    if (!eggs.length) return L.find((e) => e.boss) || L[0];
     let best = L[0], bd = Infinity;
-    for (const e of L) for (const p of eggs) { const d = Math.hypot(e.x - p.x, e.y - p.y); if (d < bd) { bd = d; best = e; } }
+    for (const e of L) {
+      let d = Infinity;
+      for (const p of eggs) d = Math.min(d, Math.hypot(e.x - p.x, e.y - p.y));
+      const score = d - (e.boss ? 0.4 : 0);
+      if (score < bd) { bd = score; best = e; }
+    }
     return best;
   },
-  // a tap in the world: the creature under it, if any (main.js remembers it for 1.5 s)
+  // ---------- the egg-aimed chicks (Phoenix, Bubble): eggs it can reach, as targets { key: 'egg<id>', type: 'egg', ref, x, y }.
+  // Not one held by a creature or a pad (its body is out of the world, or stuck), nor a stone egg the Phoenix cannot lift.
+  stkEggs() {
+    const out = [];
+    for (const e of this.aliveEggs()) {
+      if (!e.body.isActive() || e.stone > 0 || e.honey > 0 || e.icy > 0 || e.octo || e.thf || e.hc || e.clamp > 0) continue;
+      const p = e.body.getPosition();
+      out.push({ key: 'egg' + e.id, type: 'egg', ref: e, x: p.x, y: p.y, boss: false });
+    }
+    return out;
+  },
+  // the egg in the most danger: nearest a villain, cracked eggs first (a crack counts as 0.6 m closer)
+  stkEggChoose(pick) {
+    const L = this.stkEggs();
+    if (!L.length) return null;
+    if (pick) { const P = L.find((e) => e.key === pick); if (P) return P; }
+    const foes = this.stkTargets();
+    let best = L[0], bd = Infinity;
+    for (const e of L) {
+      let d = foes.length ? Infinity : 0;
+      for (const f of foes) d = Math.min(d, Math.hypot(f.x - e.x, f.y - e.y));
+      const score = d - 0.6 * (e.ref.cracks || 0);
+      if (score < bd) { bd = score; best = e; }
+    }
+    return best;
+  },
+  // a flight's target by key, wherever it is now: a villain, or an egg for the egg-aimed chicks
+  stkFind(key) {
+    if (key && key.startsWith('egg')) return this.stkEggs().find((e) => e.key === key) || null;
+    return this.stkTargets().find((e) => e.key === key) || null;
+  },
+  // a tap in the world: the creature under it, if any (main.js remembers it for 1.5 s); with an egg-aimed chick, the egg
   stkPickAt(x, y) {
+    const K = this.stk;
+    if (K && EGG_STRIKES.has(K.id)) {
+      let best = null, bd = 0.5;
+      for (const e of this.stkEggs()) { const d = Math.hypot(e.x - x, e.y - y); if (d < bd) { bd = d; best = e; } }
+      return best ? best.key : null;
+    }
     let best = null, bd = PICK_R;
     for (const e of this.stkTargets()) { const d = Math.hypot(e.x - x, e.y - y) - (e.type === 'bx' || e.type === 'kc' || e.type === 'eagle' ? 0.6 : 0); if (d < bd) { bd = d; best = e; } }
     return best ? best.key : null;
@@ -86,22 +142,27 @@ export const stkMethods = {
   // ---------- fire: o = { x, y } the launch point (the hen's back), pick (a creature key), force (dev: fill first)
   stkFire(o = {}) {
     const K = this.stk;
-    if (!K || !K.on || this.state !== 'play' || K.fly) return { ok: false, why: 'busy' };
+    if (!K || !K.on || this.state !== 'play' || K.fly || K.phx) return { ok: false, why: 'busy' };
+    if (K.spent) return { ok: false, why: 'spent' }; // the Phoenix flies once a level, meter or Chick Charge
     if (o.force) K.m = 1;
-    if (K.m < 1) return { ok: false, why: 'charge' };
-    const T = this.stkChoose(o.pick);
-    if (!T) return { ok: false, why: 'none' };
-    K.m = 0; K.full = 0; K.uses++; K.n++;
-    K.base = CHARGE.base * Math.pow(CHARGE.grow, K.uses);
+    const bag = !!o.bag && K.m < 1; // a Chick Charge from the bag (main.js spends it): fires now, the meter keeps its fill
+    if (K.m < 1 && !bag) return { ok: false, why: 'charge' };
+    const egg = EGG_STRIKES.has(K.id), T = egg ? this.stkEggChoose(o.pick) : this.stkChoose(o.pick);
+    if (!T) return { ok: false, why: egg ? 'noegg' : 'none' };
+    if (K.id === 'phoenix') K.spent = 1;
+    if (!bag) { K.m = 0; K.full = 0; K.uses++; }
+    K.n++;
+    K.base = K.uses < (CHARGE.timed ?? 99) ? CHARGE.base * Math.pow(CHARGE.grow, K.uses) : 1e9; // past `timed` uses the clock adds nothing
     const x0 = o.x ?? this.nest.getPosition().x + this.nestW / 2 + 0.9, y0 = o.y ?? this.groundY + 0.9 * this.gy;
     K.fly = { id: K.id, ph: 'hop', t: 0, key: T.key, boss: T.boss ? 1 : 0, x0, y0, tx: T.x, ty: T.y };
     this.emit('stkFire', { id: K.id, x: x0, y: y0, tx: T.x, ty: T.y, boss: T.boss });
-    return { ok: true, key: T.key };
+    return { ok: true, key: T.key, bag };
   },
 
   // ---------- every step (sim.js, after the powers)
   stkStep(dt) {
     const K = this.stk;
+    if (K && K.snip) this.stkSnipStep();
     if (!K || !K.on) return;
     const play = this.state === 'play';
     // charge: time, eggs saved, orbs taken (pickups since the last step)
@@ -111,7 +172,7 @@ export const stkMethods = {
     this.stkEv = this.events.length;
     const saved = this.savedLog.length;
     if (play && !K.fly) {
-      K.m = Math.min(1, K.m + dt / K.base + CHARGE.egg * Math.max(0, saved - K.saved) + CHARGE.orb * orbs);
+      K.m = Math.min(1, K.m + (dt / K.base + CHARGE.egg * Math.max(0, saved - K.saved) + CHARGE.orb * orbs) / ((STRIKE[K.id] && STRIKE[K.id].slow) || 1));
       if (K.m >= 1 && !K.full) { K.full = 1; this.emit('stkReady', { id: K.id }); }
     }
     K.saved = saved;
@@ -119,7 +180,7 @@ export const stkMethods = {
     const F = K.fly;
     if (F) {
       F.t += DT;
-      const T = this.stkTargets().find((e) => e.key === F.key);
+      const T = this.stkFind(F.key);
       if (T) { F.tx = T.x; F.ty = T.y; }
       if (F.ph === 'hop' && F.t >= FLIGHT.hop) { F.ph = 'fly'; F.t = 0; this.emit('stkLaunch', { id: F.id, x: F.x0, y: F.y0, tx: F.tx, ty: F.ty }); }
       else if (F.ph === 'fly' && F.t >= FLIGHT.fly) { K.fly = null; this.stkHit(F, T); }
@@ -162,11 +223,94 @@ export const stkMethods = {
       this.emit('stkRage', { x: D.x, y: D.y, t: K.rage });
     }
     if (K.dcy && this.p2d) { const p = this.p2d.body.getPosition(); K.dcyAt = { x: p.x, y: p.y }; }
+    if (K.phx) this.stkCarry();
+    if (K.tock > 0) this.stkTockStep();
+    this.stkBubbleStep();
+  },
+
+  // ---------- Phoenix: the egg rides in its talons along a blazing arc to the basket, out of the physics world (no villain,
+  // thorn or ring can touch it on the way), then is put down in the basket and saved the usual way
+  stkCarry() {
+    const K = this.stk, C = K.phx, e = this.eggs.find((q) => q.id === C.id);
+    if (!e || !e.alive || e.saved) { K.phx = null; return; }
+    e.phx = 1;
+    if (e.body.isActive()) e.body.setActive(false); // (again after a rewind)
+    C.t += DT;
+    const n = this.nest.getPosition(), tx = n.x, ty = this.nestY + 0.36 * this.gy, u = Math.min(1, C.t / C.max), v = u * u * (3 - 2 * u);
+    const h = (1.3 + 0.18 * Math.hypot(tx - C.x0, ty - C.y0)) * this.gy, x = C.x0 + (tx - C.x0) * v, y = C.y0 + (ty - C.y0) * v + h * 4 * v * (1 - v);
+    e.body.setTransform(Vec2(x, y), C.a * (1 - v));
+    if (u < 1) return;
+    K.phx = null;
+    e.phx = 0;
+    e.body.setActive(true);
+    e.body.setLinearVelocity(Vec2(0, 0)); e.body.setAngularVelocity(0);
+    e.safeT = Math.max(e.safeT || 0, 0.3);
+    this.emit('stkDrop', { id: 'phoenix', x: tx, y: ty, egg: e });
+    this.saveEgg(e);
+  },
+  // ---------- Tick-Tock: stopped time. Every live villain is held (a stun topped up every 2 s, quietly: the clock face is the
+  // look, not sparks); the lava and moving thorns wait (sim.js reads stkFrozen); a tick each second
+  stkFrozen() { return !!(this.stk && this.stk.tock > 0); },
+  stkTockAll(first) {
+    const K = this.stk, n = this.events.length, marks = this.p2 ? { ...this.p2.fx } : null, B = this.bx && this.bx.boss;
+    const left = Math.min(2.6, K.tock + 0.1);
+    for (const T of this.stkTargets()) {
+      if (first && T.type === 'bx' && B && B.atk) { B.atk = null; B.t = Math.max(B.t, 2); } // an attack under way stops with the clock
+      this.stkApply(T, T.type === 'bx' ? 'ice' : 'bolt', T.type === 'bx' ? K.tock : left, 'tock', true);
+    }
+    this.events.length = n;
+    if (marks) this.p2.fx = marks;
+  },
+  stkTockStep() {
+    const K = this.stk;
+    K.tock -= DT;
+    if (K.tock <= 0) { K.tock = 0; this.emit('stkTockEnd', {}); return; }
+    if ((K.tockRe -= DT) <= 0) { K.tockRe = 2; this.stkTockAll(false); }
+    const s = Math.ceil(K.tock);
+    if (s !== K.tick) { K.tick = s; this.emit('stkTick', { n: s }); }
+  },
+  // ---------- Bubble: the bubbled eggs are light (most of their weight carried) and guarded; at the end the bubble pops
+  stkBubbleStep() {
+    const S = STRIKE.bubble;
+    for (const e of this.eggs) {
+      if (!(e.sbub > 0) || !e.alive || e.saved) continue;
+      const b = e.body, m = b.getMass(), p = b.getPosition();
+      if (!e.phx && b.isActive()) b.applyForceToCenter(Vec2(0, this.gy * m * (this.g - S.fall * this.g0)), true); // net fall S.fall g0, whatever the eggs weigh
+      e.guard = Math.max(e.guard || 0, 0.05);
+      if ((e.sbub -= DT) > 0) continue;
+      e.sbub = 0;
+      if (!(this.guardT > 0)) e.guard = 0;
+      e.safeT = Math.max(e.safeT || 0, 0.4);
+      if (!e.phx && b.isActive()) { const a = this.stkRand() * Math.PI * 2; b.applyLinearImpulse(Vec2(Math.cos(a) * m * S.pop, Math.abs(Math.sin(a)) * m * S.pop * 0.6 * this.gy), p, true); }
+      this.emit('stkPop', { egg: e, x: p.x, y: p.y });
+    }
+  },
+  // ---------- Thorn Snips (start boost): every thorn on the rings at the start is snipped, nearest to the eggs first, one
+  // after another (two or more at a time on a thorny level, so the whole run is over in about 3 s). Thorns that come
+  // later (boss orbs, lizard drops, regrowing vines) are not on the list: the boost is for the start.
+  stkSnipStep() {
+    const P = this.stk.snip;
+    if (this.state !== 'play' || (P.t -= DT) > 0) return;
+    if (!P.list) {
+      const live = [], es = this.eggs.filter((e) => e.body).map((e) => e.body.getPosition());
+      this.rings.forEach((ring, ri) => ring.thorns.forEach((th, ti) => { if (!th.alive) return; const q = this.thornAt(th); let d = 1e9; for (const p of es) d = Math.min(d, Math.hypot(q.x - p.x, q.y - p.y)); live.push({ ri, ti, d }); }));
+      live.sort((a, b) => a.d - b.d); P.list = live.map((o) => [o.ri, o.ti]); // indices, so the state stays plain data
+      P.per = Math.max(1, Math.ceil(P.list.length * 0.15 / 2.1)); P.iv = Math.min(0.18, 2.1 / Math.ceil(P.list.length / P.per));
+    }
+    for (let k = 0; k < P.per && P.i < P.list.length; P.i++) {
+      const rg = this.rings[P.list[P.i][0]], th = rg && rg.thorns[P.list[P.i][1]]; if (!th || !th.alive) continue;
+      const q = this.thornAt(th);
+      this.emit('stkSnip', { x: q.x, y: q.y, n: P.i + 1 });
+      this.removeThorn(th, 'snip'); k++;
+    }
+    P.t = P.iv;
+    if (P.i >= P.list.length) this.stk.snip = null;
   },
 
   // ---------- the hit
   stkHit(F, T) {
     const K = this.stk, S = STRIKE[F.id], id = F.id;
+    if (S && S.premium) { this.stkHitPremium(F, T); return; }
     if (!T) { // its target got away (or left the vault): the chick lands on the nearest other one, or misses
       const L = this.stkTargets();
       let bd = 1.5;
@@ -257,6 +401,43 @@ export const stkMethods = {
       fx('glue', t);
     }
   },
+  // the premium chicks land: on an egg (Phoenix, Bubble; another egg if that one got away) or anywhere (Tick-Tock)
+  stkHitPremium(F, T) {
+    const K = this.stk, S = STRIKE[F.id], id = F.id;
+    if (id !== 'tock' && !T) T = this.stkEggChoose();
+    const x = T ? T.x : F.tx, y = T ? T.y : F.ty;
+    const fx = (k, t, o = {}) => K.fx.push({ k, t, max: t, x, y, key: T ? T.key : '', ...o });
+    if (id === 'phoenix') {
+      if (!T) { this.emit('stkHit', { id, x, y, miss: 1 }); return; }
+      const e = T.ref;
+      if (e.joint) this.unMagnet(e);
+      if (e.bubbleFix) this.popBubble(e);
+      e.phx = 1;
+      e.body.setActive(false);
+      K.phx = { id: e.id, t: 0, max: S.carry, x0: x, y0: y, a: e.body.getAngle() };
+      this.emit('stkHit', { id, x, y, key: T.key, egg: 1 });
+      this.emit('stkScoop', { id, x, y, egg: e });
+    } else if (id === 'bubble') {
+      let n = 0;
+      for (const e of this.eggs) {
+        if (!e.alive || e.saved) continue;
+        e.sbub = S.t; e.guard = Math.max(e.guard || 0, 0.05); n++;
+        const p = e.body.getPosition();
+        this.emit('stkBubbleOn', { egg: e, x: p.x, y: p.y });
+      }
+      fx('bubble', 0.9);
+      this.emit('stkHit', { id, x, y, key: T ? T.key : '', egg: 1, n });
+    } else if (id === 'tock') {
+      K.tock = S.t; K.tockRe = 2; K.tick = Math.ceil(S.t);
+      this.stkTockAll(true);
+      fx('tock', S.t);
+      // downside: the level clock pays for it (never down to nothing: at least 5 s are left, or what was left)
+      const was = this.timeLeft;
+      if (this.timeLimit) this.timeLeft = Math.max(Math.min(this.timeLeft, 5), this.timeLeft - S.cost);
+      this.emit('stkHit', { id, x, y, key: T ? T.key : '', boss: !!(T && T.boss) });
+      this.emit('stkTock', { x, y, t: S.t, cost: Math.round(was - this.timeLeft) });
+    }
+  },
   // a boss with hp takes one (a strike in its telegraph): the owl jams a gear, a thief boss is hurt, the King Crab loses a
   // shell, Grandpa Gator a tooth. Returns true when it counted.
   stkHurt(T) {
@@ -314,6 +495,7 @@ export const stkMethods = {
         try { this.reefP2(kind, T.type === 'kc' && kind === 'ice' ? Tm / 0.6 : Tm); } finally { [this.hermits, this.puffs, this.jellies, this.kc] = keep; }
         break;
       }
+      case 'urchin': this.urP2One(R, kind === 'spin' ? 'spin' : kind, Tm, why); break; // 0.8.17 urchin
       case 'spider': case 'beetle': case 'jack': {
         if (T.type === 'jack' && kind !== 'ice' && kind !== 'bolt') { stun3(); break; }
         const C = this.cw, keep = [C.sp, C.bt, C.jk];
@@ -327,6 +509,8 @@ export const stkMethods = {
         try { this.bayouP2(kind, T.type === 'gator' && R.boss ? Tm / 0.4 : Tm); } finally { [this.gators, this.turtles, this.mosqs] = keep; }
         break;
       }
+      case 'pip': this.pipHit(kind, { p: R }, Tm); break; // 0.8.17 pip
+      case 'coco': this.cocoHit(kind, { p: R }, Tm); break; // 0.8.17 coco
       case 'bx': {
         const B = R;
         B.flinch = Math.max(B.flinch, 0.9);

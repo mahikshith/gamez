@@ -13,7 +13,7 @@ import { drawSnake } from './snake.js';
 import { drawThief, thiefPose, drawThiefEmblem } from './thieves.js';
 import { drawOctopus } from './octopus.js';
 import { drawFish } from './sea.js';
-import { drawFrog } from './frog.js';
+import { drawFrog, frogPortrait } from './frog.js';
 import { drawEagle } from './v3art.js';
 import { drawSalamander } from './salamander.js';
 import { drawHermit, drawPuffer, drawJelly } from './reef.js';
@@ -22,6 +22,12 @@ import { drawCwIntro } from './clockwork.js';
 import { drawKingEmblem } from './kingcrab.js';
 import { drawOwlEmblem } from './owl.js';
 import { drawOrb } from './powers.js';
+import { penguinPose, drawPenguin } from './penguin.js'; // 0.8.17 pip
+import { drawUrchin, urchinPose } from './urchin.js'; // 0.8.17 urchin
+import { monkeyPose, drawMonkey } from './monkey.js'; // 0.8.17 coco
+import { drawRaccoon, raccoonPose } from './raccoon.js'; // 0.8.17 bandit
+import { kitsPortrait } from './kitsplay.js'; // 0.8.18 kits
+import { drawMoverPortrait } from './movethorn.js'; // 0.8.18 the moving thorn
 
 const TAU = Math.PI * 2;
 const INK = '#2a1606';
@@ -35,60 +41,102 @@ function chip(ctx, cx, cy, r, col) {
   ctx.lineWidth = Math.max(1, r * 0.1); ctx.strokeStyle = '#ffe3b0'; ctx.stroke();
 }
 
+// a snake's spine through a coil of control points (box units, head first), smoothed (Catmull-Rom), centred on x, y;
+// dir -1 mirrors it
+const S_COIL = [[-0.04, -0.2], [0.14, -0.22], [0.3, -0.1], [0.14, 0.04], [-0.14, 0.02], [-0.3, 0.16], [-0.12, 0.3], [0.18, 0.3], [0.34, 0.22]];
+function coil(x, y, d, C, dir) {
+  const out = [], P = C.map(([a, b]) => [x + a * d * dir, y + b * d]);
+  for (let i = 0; i < P.length - 1; i++) {
+    const p0 = P[Math.max(0, i - 1)], p1 = P[i], p2 = P[i + 1], p3 = P[Math.min(P.length - 1, i + 2)];
+    for (let k = 0; k < 6; k++) { const u = k / 6, u2 = u * u, u3 = u2 * u; out.push({ x: 0.5 * (2 * p1[0] + (-p0[0] + p2[0]) * u + (2 * p0[0] - 5 * p1[0] + 4 * p2[0] - p3[0]) * u2 + (-p0[0] + 3 * p1[0] - 3 * p2[0] + p3[0]) * u3), y: 0.5 * (2 * p1[1] + (-p0[1] + p2[1]) * u + (2 * p0[1] - 5 * p1[1] + 4 * p2[1] - p3[1]) * u2 + (-p0[1] + 3 * p1[1] - 3 * p2[1] + p3[1]) * u3) }); }
+  }
+  out.push({ x: P[P.length - 1][0], y: P[P.length - 1][1] });
+  return out;
+}
+
 const ART = {
-  snake(ctx, x, y, d, t) {
-    const pts = [];
-    for (let i = 0; i <= 24; i++) { const u = i / 24; pts.push({ x: x + d * (0.08 - 0.5 * u), y: y - d * 0.08 + Math.sin(u * 5.2 + 0.4) * d * 0.14 + u * d * 0.14 }); }
-    drawSnake(ctx, pts, d * 0.06, t, { skin: 'violet' });
+  // 2026-11-19 (mykee: "only the head and a bit of tail"): the whole snake, coiled in an S inside the box, head up
+  snake(ctx, x, y, d, t) { drawSnake(ctx, coil(x, y + d * 0.05, d * 0.94, S_COIL, 1), d * 0.044, t, { skin: 'violet', look: { x: 0.3, y: 0.6 } }); },
+  'boss:snake'(ctx, x, y, d, t) { // the big one coiled in front, the small fast one curled behind it
+    drawSnake(ctx, coil(x + d * 0.22, y - d * 0.2, d * 0.44, S_COIL, -1), d * 0.026, t, { skin: 'emerald' });
+    drawSnake(ctx, coil(x - d * 0.02, y + d * 0.1, d * 0.8, S_COIL, 1), d * 0.052, t, { skin: 'violet' });
   },
-  'boss:snake'(ctx, x, y, d, t) {
-    const big = [], small = [];
-    for (let i = 0; i <= 24; i++) { const u = i / 24; big.push({ x: x + d * (0.06 - 0.5 * u), y: y + d * 0.14 + Math.sin(u * 5 + 0.3) * d * 0.08 }); }
-    for (let i = 0; i <= 16; i++) { const u = i / 16; small.push({ x: x + d * (-0.34 + 0.44 * u), y: y - d * 0.22 + Math.sin(u * 6 + 1) * d * 0.05 }); }
-    drawSnake(ctx, small, d * 0.035, t, { skin: 'emerald' });
-    drawSnake(ctx, big, d * 0.07, t, { skin: 'violet' });
-  },
-  weasel(ctx, x, y, d, t) { const s = d * 0.5; drawThief(ctx, x - d * 0.04, y + d * 0.22, s, t, thiefPose('weasel', 'idle', t), { face: 1 }, 'weasel'); },
+
+  weasel(ctx, x, y, d, t) { const s = d * 0.5; drawThief(ctx, x - d * 0.14, y + d * 0.18, s, t, thiefPose('weasel', 'idle', t), { face: 1 }, 'weasel'); },
   rats(ctx, x, y, d, t) {
     const s = d * 0.38;
     drawThief(ctx, x - d * 0.16, y + d * 0.12, s, t + 0.7, thiefPose('rat', 'idle', t + 0.7), { face: 1 }, 'rat');
     drawThief(ctx, x + d * 0.08, y + d * 0.32, s, t, thiefPose('rat', 'idle', t), { face: 1 }, 'rat');
   },
-  'boss:weasel'(ctx, x, y, d, t) { ctx.save(); ctx.translate(x + d * 0.22, y - d * 0.04); drawThiefEmblem(ctx, 'weasel', d * 0.62, t); ctx.restore(); },
-  'boss:ratking'(ctx, x, y, d, t) { ctx.save(); ctx.translate(x + d * 0.2, y - d * 0.06); drawThiefEmblem(ctx, 'ratking', d * 0.56, t); ctx.restore(); },
+  'boss:weasel'(ctx, x, y, d, t) { ctx.save(); ctx.translate(x + d * 0.08, y - d * 0.02); drawThiefEmblem(ctx, 'weasel', d * 0.5, t); ctx.restore(); },
+  'boss:ratking'(ctx, x, y, d, t) { ctx.save(); ctx.translate(x + d * 0.08, y - d * 0.02); drawThiefEmblem(ctx, 'ratking', d * 0.48, t); ctx.restore(); },
   octopus(ctx, x, y, d, t) { drawOctopus(ctx, x, y - d * 0.08, d * 0.3, t, {}); },
   fish(ctx, x, y, d, t) {
     const L = d * 0.3;
     [[-0.2, -0.16, 0], [0.16, -0.02, 1.3], [-0.12, 0.2, 2.1]].forEach(([fx, fy, ph]) => drawFish(ctx, x + fx * d + Math.sin(t * 1.3 + ph) * d * 0.03, y + fy * d, L, 0, t + ph, { flip: 1 }));
   },
-  frog(ctx, x, y, d, t) { drawFrog(ctx, x, y + d * 0.3, d * 0.8, t, { look: { x: 0.4, y: 0.1 }, face: 1 }); },
-  eagle(ctx, x, y, d, t) { drawEagle(ctx, x, y + d * 0.06, d * 0.42, t, { w: { hover: 1 }, phase: t * 8.5, face: 1 }); },
-  'boss:eagle'(ctx, x, y, d, t) { drawEagle(ctx, x, y + d * 0.06, d * 0.46, t, { w: { hover: 1 }, phase: t * 8.5, face: -1 }); },
+  frog(ctx, x, y, d, t) { drawFrog(ctx, x - d * 0.04, y + d * 0.3, d * 0.8, t, frogPortrait(t)); }, // 0.8.18: the lock-on, a lip-lick, the egg in its cheeks, ptoo
+  penguin(ctx, x, y, d, t) { drawPenguin(ctx, x, y + d * 0.4, d * 0.66, t, penguinPose('idle', t), { face: 1 }); }, // 0.8.17 pip
+  monkey(ctx, x, y, d, t) { drawMonkey(ctx, x - d * 0.04, y + d * 0.42, d * 0.8, t, monkeyPose('laugh', t), { face: 1 }); }, // 0.8.17 coco
+  eagle(ctx, x, y, d, t) { drawEagle(ctx, x, y + d * 0.08, d * 0.54, t, { w: { hover: 1 }, phase: t * 8.5, face: 1 }); },
+  'boss:eagle'(ctx, x, y, d, t) { drawEagle(ctx, x, y + d * 0.08, d * 0.56, t, { w: { hover: 1 }, phase: t * 8.5, face: -1 }); },
   salamander(ctx, x, y, d, t) {
     const S = d * 0.4;
-    drawSalamander(ctx, x + 0.8 * S, y + d * 0.06, S, t, { heading: 0, curve: -0.12 / S, pose: 'idle', glow: 0.75 + 0.2 * Math.sin(t * 2), look: { x: 0.4, y: 0.5 }, id: 9101 });
+    drawSalamander(ctx, x + 0.8 * S, y + d * 0.06, S, t, { heading: 0, curve: -0.12 / S, pose: 'idle', glow: 0.75 + 0.2 * Math.sin(t * 2), look: { x: 0.4, y: 0.5 }, id: 9101, expr: { k: Math.floor(t / 3.2) % 2 ? 'greedy' : 'smug', a: Math.min(1, 3 * Math.min((t / 3.2) % 1, 1 - (t / 3.2) % 1) + 0.2) } }); // 0.8.18: smug, then greedy (licking his lips), in turn
+  },
+  frostsal(ctx, x, y, d, t) {
+    const S = d * 0.4;
+    drawSalamander(ctx, x + 0.8 * S, y + d * 0.06, S, t, { heading: 0, curve: -0.12 / S, pose: 'idle', frost: 1, glow: 0.75 + 0.2 * Math.sin(t * 2), look: { x: 0.4, y: 0.5 }, id: 9103 });
+  },
+  emberspit(ctx, x, y, d, t) { // 0.8.19 (aggroB) the Tongue Lash on a loop (key kept): his throat glows as he locks on, the tongue darts out and back
+    const S = d * 0.4, u = (t % 2.4) / 2.4, f = Math.min(1, u / 0.6), out = u < 0.6 ? 0 : Math.sin(Math.PI * Math.min(1, (u - 0.6) / 0.3));
+    drawSalamander(ctx, x + 0.8 * S, y + d * 0.06, S, t, { heading: 0, curve: -0.12 / S, pose: 'bite', p: u < 0.6 ? 0.18 + 0.4 * f : 0.9, blend: { fire: 0 }, cheek: u < 0.6 ? f : 0, glow: 0.9, look: { x: 0.6, y: 0 }, id: 9105 });
+    if (out > 0.02) {
+      const mx = x + 0.8 * S + 0.5 * S, my = y + d * 0.06, tx = mx + out * 1.1 * S;
+      ctx.save(); ctx.lineCap = 'round'; ctx.strokeStyle = '#7a1630'; ctx.lineWidth = S * 0.11; ctx.beginPath(); ctx.moveTo(mx, my); ctx.lineTo(tx, my); ctx.stroke();
+      ctx.strokeStyle = '#ff6f8f'; ctx.lineWidth = S * 0.07; ctx.stroke(); ctx.fillStyle = '#ff6f8f'; ctx.beginPath(); ctx.arc(tx, my, S * 0.09, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+    }
+  },
+  fireup(ctx, x, y, d, t) { // 0.8.18 white-hot and smug about it
+    const S = d * 0.4;
+    drawSalamander(ctx, x + 0.8 * S, y + d * 0.06, S, t, { heading: 0, curve: -0.12 / S, pose: 'idle', white: 1, expr: { k: 'smug', a: 1 }, glow: 1, look: { x: 0.4, y: 0.5 }, id: 9107 });
+  },
+  faceoff(ctx, x, y, d, t) { // the two of them nose to nose
+    const S = d * 0.26;
+    drawSalamander(ctx, x - d * 0.06, y - d * 0.1, S, t, { heading: 0, curve: -0.2 / S, pose: 'idle', glow: 0.9, look: { x: 1, y: 0 }, id: 9104 });
+    drawSalamander(ctx, x + d * 0.06, y + d * 0.2, S, t + 0.6, { heading: Math.PI, curve: -0.2 / S, pose: 'idle', frost: 1, glow: 0.9, look: { x: -1, y: 0 }, id: 9105 });
   },
   'boss:salamander'(ctx, x, y, d, t) {
     const S = d * 0.44;
-    drawSalamander(ctx, x + 0.78 * S, y + d * 0.08, S, t, { heading: 0, curve: -0.12 / S, pose: 'idle', glow: 1, look: { x: 0.4, y: 0.5 }, id: 9102 });
+    drawSalamander(ctx, x + 0.78 * S, y + d * 0.08, S, t, { heading: 0, curve: -0.12 / S, pose: 'idle', glow: 1, look: { x: 0.4, y: 0.5 }, id: 9102, white: 0.5 + 0.5 * Math.sin(t * 0.9), expr: { k: 'smug', a: 1 } }); // 0.8.18: the boss swells white-hot and back, smug
   },
   hermit(ctx, x, y, d, t) { drawHermit(ctx, x + d * 0.04, y + d * 0.26, d * 0.8, t, { pose: 'walk', u: t * 0.6 }); },
   puffer(ctx, x, y, d, t) { drawPuffer(ctx, x, y, d * 0.62, t, { sw: 0.5 + 0.5 * Math.sin(t * 1.4) }); },
   jelly(ctx, x, y, d, t) { drawJelly(ctx, x, y - d * 0.12, d * 0.72, t, {}); },
+  urchin(ctx, x, y, d, t) { drawUrchin(ctx, x, y + d * 0.41, d * 0.7, t, urchinPose('idle', t), { face: 1 }); }, // 0.8.17 urchin
   gator(ctx, x, y, d, t) { ctx.save(); ctx.translate(x - d * 0.1, y + d * 0.16); drawGator(ctx, d * 0.86, t, { jaw: 0.35 + 0.15 * Math.sin(t * 1.6), eye: 'open', look: -0.4 }); ctx.restore(); },
-  'boss:gator'(ctx, x, y, d, t) { ctx.save(); ctx.translate(x, y); drawGatorEmblem(ctx, d * 0.5, t); ctx.restore(); },
+  'boss:gator'(ctx, x, y, d, t) { ctx.save(); ctx.translate(x + d * 0.08, y); drawGatorEmblem(ctx, d * 0.42, t); ctx.restore(); },
   turtle(ctx, x, y, d, t) { ctx.save(); ctx.translate(x - d * 0.04, y + d * 0.18); drawTurtle(ctx, d * 0.84, t, { head: 0.1 + 0.1 * Math.sin(t * 1.5), glare: 1 }); ctx.restore(); },
   mosquito(ctx, x, y, d, t) { drawSwarm(ctx, x, y, d * 0.3, t, {}); },
-  spider(ctx, x, y, d, t) { drawCwIntro(ctx, 'spider', x - d / 2, y - d / 2, d, d * 0.9, t); },
-  beetle(ctx, x, y, d, t) { drawCwIntro(ctx, 'beetle', x - d / 2, y - d * 0.36, d, d * 0.5, t); },
-  jack(ctx, x, y, d, t) { drawCwIntro(ctx, 'jack', x - d / 2, y - d * 0.45, d, d * 0.8, t); },
+  spider(ctx, x, y, d, t) { drawCwIntro(ctx, 'spider', x - d * 0.42, y - d * 0.4, d * 0.84, d * 0.74, t); },
+  beetle(ctx, x, y, d, t) { drawCwIntro(ctx, 'beetle', x - d * 0.52, y - d * 0.4, d * 0.8, d * 0.68, t); },
+  jack(ctx, x, y, d, t) { drawCwIntro(ctx, 'jack', x - d / 2, y - d * 0.72, d, d * 1.1, t); },
   'boss:kingcrab'(ctx, x, y, d, t) { ctx.save(); ctx.translate(x, y); drawKingEmblem(ctx, d * 0.38, t); ctx.restore(); },
+  'boss:raccoon'(ctx, x, y, d, t) { // 0.8.17 bandit; 0.8.18: on a ring's rim, cranking it hand over hand
+    const s = d * 0.6, u = s / 100, fy = y + d * 0.3, R = 235 * u, cy = fy + R + 4 * u;
+    ctx.save(); ctx.lineCap = 'butt';
+    for (const [lw, col] of [[20 * u, '#3a2412'], [15 * u, '#a8713c'], [5 * u, '#c99556']]) { ctx.lineWidth = lw; ctx.strokeStyle = col; ctx.beginPath(); ctx.arc(x, cy, R + 4 * u, -Math.PI / 2 - 0.3, -Math.PI / 2 + 0.3); ctx.stroke(); }
+    ctx.restore();
+    drawRaccoon(ctx, x - d * 0.08, fy, s, t, raccoonPose('crank', t, 0, { R: 235 }), { egg: false });
+  },
+  bandit(ctx, x, y, d, t) { ART['boss:raccoon'](ctx, x, y, d, t); }, // 0.8.17 bandit: the practice tile
+  kits(ctx, x, y, d, t) { kitsPortrait(ctx, x, y, d, t, 'bow'); }, // 0.8.18 kits: the practice tile (her own bow)
   'boss:owl'(ctx, x, y, d, t) { ctx.save(); ctx.translate(x, y - d * 0.06); drawOwlEmblem(ctx, d * 0.3, t); ctx.restore(); },
   // the boss-bar emblems (render/boss.js drawBossEmblem; that function is not exported, so the two shapes are redrawn here)
-  'boss:blizzard'(ctx, x, y, d, t) { ctx.save(); ctx.translate(x, y); drawGeckoEmblem(ctx, d * 0.34, t); ctx.restore(); }, // Baron von Brr, the frost gecko
+  'boss:blizzard'(ctx, x, y, d, t) { ctx.save(); ctx.translate(x, y); drawGeckoEmblem(ctx, d * 0.23, t); ctx.restore(); }, // Baron von Brr, the frost gecko
   'boss:golem'(ctx, x, y, d, t) { const r = d * 0.34; chip(ctx, x, y, r, '#6a4fc8'); ctx.save(); ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.clip(); ctx.translate(x, y); drawThornEmblem(ctx, r, t); ctx.restore(); }, // Duke Quartz
-  chameleon(ctx, x, y, d, t) { const S = d * 0.34; drawCrawler(ctx, x + 0.8 * S, y + d * 0.02, S, t, { heading: 0, curve: -0.12 / S, pose: 'idle', look: { x: 0.5, y: 0.4 }, id: 9260 }, 'chameleon'); }, // L26: Sly, the orb thief
-  spike(ctx, x, y, d, t) { const S = d * 0.36; drawCrawler(ctx, x + 0.75 * S, y + d * 0.04, S, t, { heading: 0, curve: -0.14 / S, pose: 'idle', look: { x: 0.4, y: 0.5 }, id: 9120 }, 'thornback'); }, // Spike, the sandy thorn-back
+  chameleon(ctx, x, y, d, t) { const S = d * 0.44; drawCrawler(ctx, x + 0.8 * S, y + d * 0.02, S, t, { heading: 0, curve: -0.12 / S, pose: 'idle', look: { x: 0.5, y: 0.4 }, id: 9260 }, 'chameleon'); }, // L26: Sly, the orb thief
+  spike(ctx, x, y, d, t) { const S = d * 0.46; drawCrawler(ctx, x + 0.75 * S, y + d * 0.04, S, t, { heading: 0, curve: -0.14 / S, pose: 'idle', look: { x: 0.4, y: 0.5 }, id: 9120 }, 'thornback'); }, // Spike, the sandy thorn-back
   // ---- hazards: small icons
   icicles(ctx, x, y, d, t) {
     const sh = Math.sin(t * 9) * d * 0.012 * (Math.sin(t * 1.3) > 0.5 ? 1 : 0);
@@ -181,6 +229,15 @@ const ART = {
     for (let i = 1; i <= 4; i++) { const u = i / 5 * k, px = x - d * 0.2 + u * d * 0.4, py = y + Math.sin(u * 14) * d * 0.04, s2 = i % 2 ? -1 : 1; ctx.beginPath(); ctx.moveTo(px - d * 0.03, py); ctx.lineTo(px, py + s2 * d * 0.09); ctx.lineTo(px + d * 0.03, py); ctx.closePath(); ctx.fill(); }
     ctx.restore();
   },
+  doors(ctx, x, y, d, t) { // a ring slab with a gap whose two red doors slide shut and open on a beat
+    const k = Math.max(0, Math.min(1, 0.5 + 0.9 * Math.sin(t * 2.2))), gw = d * 0.3, y0 = y + d * 0.08, h = d * 0.16;
+    ctx.fillStyle = '#b9854e'; ctx.fillRect(x - d * 0.42, y0, d * 0.42 - gw / 2, h); ctx.fillRect(x + gw / 2, y0, d * 0.42 - gw / 2, h);
+    ctx.strokeStyle = INK; ctx.lineWidth = Math.max(1, d * 0.02); ctx.strokeRect(x - d * 0.42, y0, d * 0.42 - gw / 2, h); ctx.strokeRect(x + gw / 2, y0, d * 0.42 - gw / 2, h);
+    const dw = (gw / 2) * k;
+    if (dw > 0.5) for (const sd of [-1, 1]) { const x0 = sd < 0 ? x - gw / 2 : x + gw / 2 - dw; ctx.fillStyle = '#b8432f'; ctx.fillRect(x0, y0, dw, h); ctx.strokeStyle = '#4a140c'; ctx.strokeRect(x0, y0, dw, h); }
+    ctx.fillStyle = '#fff4dc'; ctx.beginPath(); ctx.ellipse(x, y0 - d * 0.16, d * 0.12, d * 0.15, 0, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = INK; ctx.stroke();
+  },
+  creeper(ctx, x, y, d, t) { drawMoverPortrait(ctx, x, y, d, t); }, // 0.8.18 the moving thorn: the game's thorn in its groove
   curse(ctx, x, y, d, t) { drawOrb(ctx, 'curse', x, y, d * 0.3, t, true); },
   thornorb(ctx, x, y, d, t) { drawOrb(ctx, 'thorn', x, y, d * 0.3, t, true); },
 };
@@ -192,6 +249,7 @@ function badge(ctx, kind, x, y, d) {
   ctx.fillText(kind.replace('boss:', '')[0].toUpperCase(), x, y + d * 0.02);
 }
 
+for (const c of ['ice', 'woods', 'sea', 'cave', 'goggles', 'bow']) ART['kits:' + c] = (ctx, x, y, d, t) => kitsPortrait(ctx, x, y, d, t, c); // 0.8.18 kits: mama in the level's world costume
 export const hasPortrait = (kind) => !!ART[kind];
 
 // the portrait of `kind` centred at (x, y) in a d x d box (the caller clips it)

@@ -6,6 +6,7 @@
 // in sim/allies.js and allyPlace() there says where it is).
 import { ALLY, allyPlace, allyElapsed, flingAt } from '../sim/allies.js';
 import { drawHenAnim } from './hen.js';
+import { drawSkinHat, drawSkinNose, drawSkinOutfit, ovalGarment, skinHidesComb } from './skins.js';
 import { geckoAnchor } from './gecko15.js';
 
 const TAU = Math.PI * 2;
@@ -213,11 +214,11 @@ export function roosterPose(anim, k = 0, tt = 0) {
     // shut 0..1 (squeezed closed), wide 0..1 (a startled bigger eye), px = where the pupil looks. Idle = cocky half-lids.
     lidU: 0.36, lidL: 0.1, browA: -0.1, browY: 0, shut: 0, wide: 0, px: 0.7 };
   const f = Math.sin(tt * 18);
-  if (anim === 'fly') { P.wa = lerp(-2.05, -4.25, (f + 1) / 2); P.sp = 1; P.far = 1; P.hx = 6; P.hy = 2; P.beak = 0.3; P.legs = 'tuck'; P.lean = 0.1; P.tail = -0.25 + f * 0.1; P.eye = 'wide'; P.lidU = 0.14; P.lidL = 0; P.wide = 0.45; P.browA = 0.42; P.browY = 0.8; P.px = 1.2; }
+  if (anim === 'fly') { P.wa = lerp(-2.05, -4.25, (f + 1) / 2); P.sp = 1; P.far = 1; P.hx = 6; P.hy = 2; P.beak = 0.3; P.legs = 'tuck'; P.lean = 0.1; P.tail = -0.25 + f * 0.1; P.eye = 'wide'; P.lidU = 0.14; P.lidL = 0; P.wide = 0.45; P.browA = 0.42; P.browY = 0.8; P.px = 1.4; P.pup = 0.85; }
   else if (anim === 'land') {
     const fold = sstep((k - 0.55) / 0.45);
     P.wa = lerp(-1.95 + Math.sin(tt * 24) * 0.3, -3.68, fold); P.sp = 1 - fold; P.far = 1 - fold; P.legs = 'reach'; P.tail = 0.5 * (1 - fold); P.lean = -0.2 * (1 - fold); P.beak = 0.3 * (1 - fold); P.hx = 3; P.eye = 'wide';
-    { const e = 1 - fold; P.wide = 0.9 * e; P.lidU = lerp(0.36, 0, e); P.lidL = lerp(0.1, 0, e); P.browA = lerp(-0.1, -0.32, e); P.browY = -1.8 * e; } // braking: a startled take that settles into his usual look
+    { const e = 1 - fold; P.wide = 1 * e; P.lidU = lerp(0.36, 0, e); P.lidL = lerp(0.1, 0, e); P.browA = lerp(-0.1, -0.36, e); P.browY = -2.6 * e; P.pup = lerp(1, 0.55, e); P.beak = Math.max(P.beak, 0.55 * e); P.px = lerp(0.7, 1.4, e); } // braking: he sees the thief: a startled take (pin pupils, beak agape) that settles into his usual look (faces3)
   } else if (anim === 'crouch') { P.dy = 6 * k; P.sqy = 1 - 0.1 * k; P.wa = 1.7; P.sp = 0.3 * k; P.legs = 'bent'; P.lean = 0.12 * k; P.tail = -0.1; P.eye = 'glare'; P.lidU = 0.2 + 0.14 * k; P.lidL = 0.16 * k; P.browA = 0.15 + 0.4 * k; P.browY = 1.2 * k; P.px = 1.3; }
   else if (anim === 'puff') {
     const a = sstep(k), pop = Math.sin(clamp(k * 1.6, 0, 1) * Math.PI) * 0.04;
@@ -231,6 +232,9 @@ export function roosterPose(anim, k = 0, tt = 0) {
   } else if (anim === 'strut') {
     const ph = tt * 8;
     P.ph = ph; P.legs = 'walk'; P.chest = 1.14; P.hx = 3 + 3 * Math.sin(ph * 2 - 0.8); P.hy = -3; P.tail = 0.35; P.lean = -0.08; P.dy = -2 - Math.abs(Math.sin(ph)) * 1.6; P.eye = 'proud'; P.wa = 2.6; P.lidU = 0.5; P.lidL = 0.2; P.browA = -0.2; P.browY = -1.4; P.px = 1.2;
+    // faces3: puffed and proud after the thief bolts: chest out, beak in the air, eyes shut in a smug arc, brows up; a sly
+    // half-lidded glance back over the last third
+    const gl = sstep((k - 0.62) / 0.12); P.chest = 1.24; P.hr = -0.24 * (1 - gl * 0.5); P.hy = -4; P.shut = 1 - gl; P.browY = -2.2 + 0.8 * gl; P.browA = -0.3 + 0.1 * gl; P.lidU = 0.55; P.lidL = 0.25; P.px = -0.4;
   } else { P.chest = 1.05 + Math.sin(tt * 2.4) * 0.01; P.eye = 'open'; }
   return P;
 }
@@ -315,6 +319,11 @@ export function drawRooster(ctx, cx, cy, s, P) {
         plume(ctx, o, px, py, base + lerp(0.5, -0.42, t), len * (1 - 0.16 * Math.abs(t - 0.4)), 8.4, cols, 0.5);
       }
     }
+    { // 2026-11-16 skins: the outfit over his body (under the near wing); his body oval rides the puffed chest
+      ctx.save(); ctx.translate(10, bodyY + 2); ctx.scale(P.chest, 1 + (P.chest - 1) * 0.5); ctx.translate(-10, -bodyY - 2);
+      drawSkinOutfit(ctx, o, P.tt || 0, ovalGarment(-2, bodyY, 34, 26, -0.38, [21, bodyY - 27, 36, bodyY - 17], { h0: 0.1, h1: 2.6, fa: 0.25, ba: 0.75 }));
+      ctx.restore();
+    }
     // near wing
     featherWing(ctx, o, 2, bodyY - 12, P.wa, P.sp, COCK.wing, COCK.wingTip, 1.2);
     // head details, in the head's own frame
@@ -331,13 +340,16 @@ export function drawRooster(ctx, cx, cy, s, P) {
       c.bezierCurveTo(14.6, -6.4, 13, -4.6, 11, -4.6);
       c.closePath();
     };
+    if (!skinHidesComb()) { // 2026-11-16: a hat that sits over the crown hides the comb
     ctx.save(); ctx.translate(0.5, -8); ctx.scale(0.96, 1.24); ctx.translate(0, 6); // a bigger, upright comb, sat on the crown (room for the brow)
     ctx.lineWidth = o * 2 / 1.1; ctx.strokeStyle = RED.line; ctx.beginPath(); combPath(ctx); ctx.stroke();
     ctx.fillStyle = grad(ctx, -4, -27, 4, -5, ['#ff5a43', RED.hi, RED.lo]); ctx.beginPath(); combPath(ctx); ctx.fill();
     ctx.save(); ctx.beginPath(); combPath(ctx); ctx.clip(); ctx.fillStyle = 'rgba(120,10,10,0.3)'; ctx.beginPath(); ctx.ellipse(2, -5.5, 15, 3.4, 0.05, 0, TAU); ctx.fill(); ctx.restore(); // where it meets the crown
     ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 1.6;
     ctx.beginPath(); ctx.moveTo(-12.4, -12); ctx.quadraticCurveTo(-12, -14, -10, -14); ctx.moveTo(-8.4, -19); ctx.quadraticCurveTo(-7, -21, -5, -20.4); ctx.moveTo(0, -23); ctx.quadraticCurveTo(1.6, -25, 3.6, -24.2); ctx.moveTo(9, -20.6); ctx.quadraticCurveTo(10.4, -21.4, 11.6, -20); ctx.stroke();
-    ctx.restore();
+    ctx.restore(); }
+    drawSkinHat(ctx, o, P.tt || 0); // 2026-11-15: the rooster wears the hen's skin set (hat over the comb)
+    drawSkinNose(ctx, o, 24.5, 1, P.tt || 0);
     // earlobe, wattle
     ctx.fillStyle = 'rgba(255,250,236,0.85)'; ctx.beginPath(); ctx.ellipse(-3.5, 7, 2.6, 3.4, 0.3, 0, TAU); ctx.fill(); // earlobe: a soft pale patch (never a second eye)
     const open = P.beak;
@@ -365,6 +377,8 @@ export function drawRooster(ctx, cx, cy, s, P) {
       const lidU = Math.max(fv(P.lidU, 0.2), shut * 0.62), lidL = Math.max(fv(P.lidL, 0), shut * 0.42);
       const rx = 5.3 + 0.6 * wide, ry = 6 + 0.9 * wide;
       ctx.lineCap = 'round';
+      const es = 1 + 0.32 * (1 - sstep((s - 70) / 80)); // faces3: at play size (~58 px) the eye and brow are drawn 1.32x so his face reads
+      ctx.save(); if (es > 1.001) { ctx.translate(ex, ey); ctx.scale(es, es); ctx.translate(-ex, -ey); }
       if (shut > 0.8) { // squeezed shut: one thick happy-effort arc with a little crease
         ctx.strokeStyle = EYE; ctx.lineWidth = o * 1.35;
         ctx.beginPath(); ctx.moveTo(ex - 4.8, ey + 1.6); ctx.quadraticCurveTo(ex, ey - 4.2, ex + 4.8, ey + 1.6); ctx.stroke();
@@ -373,7 +387,7 @@ export function drawRooster(ctx, cx, cy, s, P) {
         const ball = () => { ctx.beginPath(); ctx.ellipse(ex, ey, rx, ry, 0, 0, TAU); };
         ball(); ctx.fillStyle = '#fffdf6'; ctx.fill();
         ctx.save(); ball(); ctx.clip();
-        const ix = ex + fv(P.px, 0.7) * (1 - 0.5 * wide), iy = ey + 0.4 + (lidU - lidL) * 1.6, ir = 4 - 0.6 * wide;
+        const ix = ex + fv(P.px, 0.7) * (1 - 0.5 * wide), iy = ey + 0.4 + (lidU - lidL) * 1.6, ir = (4 - 0.6 * wide) * clamp(fv(P.pup, 1), 0.4, 1.2);
         ctx.fillStyle = rgrad(ctx, ix, iy + 1.6, 0.5, ir * 1.25, ['#9a5f2a', '#5c3517', '#3d2210']); ctx.beginPath(); ctx.ellipse(ix, iy, ir, ir * 1.12, 0, 0, TAU); ctx.fill(); // big dark iris, warmer low
         ctx.fillStyle = '#1a100a'; glint(ctx, ix + 0.2, iy, ir * 0.56); // near-black pupil
         ctx.fillStyle = '#fff'; glint(ctx, ix - 1.4, iy - 1.9, 1.5); glint(ctx, ix + 1.5, iy + 1.8, 0.65);
@@ -389,6 +403,7 @@ export function drawRooster(ctx, cx, cy, s, P) {
       ctx.translate(ex + 0.6, ey - ry - 2.6 + browY + (shut > 0.8 ? 1.2 : 0)); ctx.rotate(browA);
       ctx.strokeStyle = '#5a3a1e'; ctx.lineWidth = o * 1.6;
       ctx.beginPath(); ctx.moveTo(-5.8, 0.6); ctx.quadraticCurveTo(-0.5, -1.9 + browA * 2.2, 5.6, 0.2); ctx.stroke();
+      ctx.restore();
       ctx.restore();
     }
     ctx.restore();
@@ -471,6 +486,8 @@ export function drawGoose(ctx, cx, cy, s, P) {
     for (const [x, y] of [[14, 12], [24, 14], [8, 22], [19, 24], [2, 30], [13, 32]]) { ctx.moveTo(x - 4, y + dy + bodyY - 14); ctx.quadraticCurveTo(x, y + 4 + dy + bodyY - 14, x + 4, y + dy + bodyY - 14); }
     ctx.stroke();
     ctx.restore();
+    // 2026-11-16 skins: the goose wears the outfit too
+    drawSkinOutfit(ctx, o, P.tt || 0, ovalGarment(-2, bodyY, 38, 25, -0.12, [16, bodyY - 15, 29.5, bodyY - 6], { h0: 0.15, h1: 2.85, fa: 0.2, ba: 0.6 }));
     // head: beak and knob, eye
     ctx.save();
     ctx.translate(H.x, H.y);
@@ -501,6 +518,7 @@ export function drawGoose(ctx, cx, cy, s, P) {
       ctx.save(); ctx.clip(); ctx.fillStyle = 'rgba(90,150,210,0.85)'; ctx.beginPath(); ctx.ellipse(ex, ey + 3.5, 3.7, 2.4, 0, 0, TAU); ctx.fill(); ctx.restore();
       ctx.fillStyle = '#fff'; glint(ctx, ex - 1.2, ey - 1.6, 1.45); glint(ctx, ex + 1.3, ey + 1.5, 0.65);
     }
+    ctx.save(); ctx.translate(1.5, -3.3); ctx.scale(0.82, 0.82); drawSkinHat(ctx, o / 0.82, P.tt || 0); ctx.restore(); // the hat, in the hen's head units
     ctx.restore();
     // wing (near)
     if (sw) wing(ctx, o, 6, bodyY - 12, P.wa, P.sp, GOOSE.wing, GOOSE.tip, 1.12);

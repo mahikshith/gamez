@@ -60,17 +60,18 @@ export function octoLook(theme) {
 // ---------------------------------------------------------------- pose blender
 // channels: curl (tips curl), spread (arm fan, rad), wave, swim (bell pulse), reach (front arms toward look), stream (arms trail,
 // jet), splay (struck), squash (mantle), lift (arms raised), grip (arms pressed on the wall), scheme (front arms twirl),
-// menace (brow slant / narrowed eyes), mouth (open), smug (half-lidded, wide grin), slack (stunned)
+// menace (brow slant / narrowed eyes), mouth (open), smug (half-lidded, wide grin), slack (stunned), wow (0.8.18: caught out:
+// round eyes and pupils, brows up, a small round mouth)
 const POSES = {
-  idle: { curl: 0.7, spread: 0.85, wave: 0.28, swim: 0.3, reach: 0, stream: 0, splay: 0, squash: 0, lift: 0, grip: 1, scheme: 1, menace: 0.6, mouth: 0, smug: 0.2, slack: 0 },
-  seek: { curl: 0.3, spread: 0.62, wave: 0.2, swim: 0.7, reach: 0.5, stream: 0.1, splay: 0, squash: 0, lift: 0.15, grip: 0.9, scheme: 0, menace: 1, mouth: 0.1, smug: 0, slack: 0 },
-  warn: { curl: 0.15, spread: 1.0, wave: 0.15, swim: 0, reach: 0.85, stream: 0, splay: 0, squash: -0.25, lift: 1, grip: 0.2, scheme: 0, menace: 1, mouth: 0.6, smug: 0, slack: 0 },
-  grab: { curl: 0.15, spread: 0.85, wave: 0.1, swim: 0, reach: 1, stream: 0, splay: 0, squash: 0.25, lift: 0.4, grip: 0, scheme: 0, menace: 1, mouth: 1, smug: 0, slack: 0 },
-  carry: { curl: 0.8, spread: 0.72, wave: 0.2, swim: 0.45, reach: 0, stream: 0, splay: 0, squash: 0, lift: 0, grip: 1, scheme: 0, menace: 0.35, mouth: 0, smug: 1, slack: 0 },
-  squirt: { curl: 0.2, spread: 1.1, wave: 0.12, swim: 0, reach: 0.35, stream: 0, splay: 0, squash: -0.4, lift: 0.9, grip: 0.3, scheme: 0, menace: 1, mouth: 0.8, smug: 0, slack: 0 },
-  struck: { curl: 0.1, spread: 1.45, wave: 0.9, swim: 0, reach: 0, stream: 0, splay: 1, squash: 0.35, lift: 0.3, grip: 0, scheme: 0, menace: 0, mouth: 0.5, smug: 0, slack: 0 },
-  jet: { curl: 0.15, spread: 0.12, wave: 0.25, swim: 0, reach: 0, stream: 1, splay: 0, squash: -0.4, lift: 0, grip: 0, scheme: 0, menace: 0.7, mouth: 0, smug: 0, slack: 0 },
-  slack: { curl: 0.55, spread: 1.25, wave: 0.1, swim: 0, reach: 0, stream: 0, splay: 0, squash: 0.3, lift: -0.25, grip: 1, scheme: 0, menace: 0, mouth: 0.5, smug: 0, slack: 1 },
+  idle: { curl: 0.7, spread: 0.85, wave: 0.62, swim: 0.45, reach: 0, stream: 0, splay: 0, squash: 0, lift: 0, grip: 0.55, scheme: 1, menace: 0.6, mouth: 0, smug: 0.2, slack: 0, wow: 0 },
+  seek: { curl: 0.45, spread: 0.62, wave: 0.5, swim: 0.7, reach: 0.5, stream: 0.1, splay: 0, squash: 0, lift: 0.15, grip: 0.9, scheme: 0, menace: 1, mouth: 0.1, smug: 0, slack: 0, wow: 0 },
+  warn: { curl: 0.15, spread: 1.0, wave: 0.35, swim: 0, reach: 0.85, stream: 0, splay: 0, squash: -0.25, lift: 1, grip: 0.2, scheme: 0, menace: 1, mouth: 0.6, smug: 0, slack: 0, wow: 0 },
+  grab: { curl: 0.15, spread: 0.85, wave: 0.28, swim: 0, reach: 1, stream: 0, splay: 0, squash: 0.25, lift: 0.4, grip: 0, scheme: 0, menace: 1, mouth: 1, smug: 0, slack: 0, wow: 0 },
+  carry: { curl: 0.8, spread: 0.72, wave: 0.5, swim: 0.45, reach: 0, stream: 0, splay: 0, squash: 0, lift: 0, grip: 0.6, scheme: 0, menace: 0.35, mouth: 0, smug: 1, slack: 0, wow: 0 },
+  squirt: { curl: 0.2, spread: 1.1, wave: 0.12, swim: 0, reach: 0.35, stream: 0, splay: 0, squash: -0.4, lift: 0.9, grip: 0.3, scheme: 0, menace: 0.75, mouth: 0.3, smug: 0.75, slack: 0, wow: 0 }, // sly: the ink is its trick
+  struck: { curl: 0.1, spread: 1.45, wave: 0.9, swim: 0, reach: 0, stream: 0, splay: 1, squash: 0.35, lift: 0.3, grip: 0, scheme: 0, menace: 0, mouth: 0.5, smug: 0, slack: 0, wow: 1 },
+  jet: { curl: 0.15, spread: 0.12, wave: 0.45, swim: 0, reach: 0, stream: 1, splay: 0, squash: -0.4, lift: 0, grip: 0, scheme: 0, menace: 0.7, mouth: 0, smug: 0, slack: 0, wow: 0 },
+  slack: { curl: 0.55, spread: 1.25, wave: 0.22, swim: 0, reach: 0, stream: 0, splay: 0, squash: 0.3, lift: -0.25, grip: 1, scheme: 0, menace: 0, mouth: 0.5, smug: 0, slack: 1, wow: 0 },
 };
 export function octoAnim() {
   const A = { ...POSES.idle };
@@ -82,10 +83,10 @@ export function octoAnim() {
 }
 
 // ---------------------------------------------------------------- rig
-const NA = 8, NS = 11; // arms, points per arm
+const NA = 8, NS = 15; // arms, points per arm (15: the arm bends in a smooth curve, 2026-11-19)
 const armPts = Array.from({ length: NA }, () => Array.from({ length: NS }, () => ({ x: 0, y: 0 })));
 const armSide = new Array(NA).fill(1);
-const ARM_W0 = 0.17, ARM_W1 = 0.032; // x s
+const ARM_W0 = 0.21, ARM_W1 = 0.04; // x s (2026-11-19: fuller arms that taper to a point)
 function freeArm(i, s, t, A, look, seed, W) {
   const f = (2 * i) / (NA - 1) - 1, side = f < 0 ? 1 : -1, back = i % 2, front = Math.abs(f) < 0.5;
   armSide[i] = side;
@@ -136,34 +137,57 @@ function wrapArm(P, E, k0, sweep) {
   return wrapPts;
 }
 
+// one arm as a single smooth tapered shape (2026-11-19, mykee: the arms looked boxy): both edges run through the spine's
+// points as curves, a round tip; drawn as one outline + one fill instead of a stroked segment per joint
+const EL = Array.from({ length: NS }, () => ({ x: 0, y: 0 })), ER = Array.from({ length: NS }, () => ({ x: 0, y: 0 }));
+function armPath(ctx, P, w0, w1, grow = 0) {
+  let tn = 0, hw = 0;
+  for (let j = 0; j < NS; j++) {
+    const a = P[Math.max(0, j - 1)], b = P[Math.min(NS - 1, j + 1)], dx = b.x - a.x, dy = b.y - a.y, l = Math.hypot(dx, dy) || 1, u = j / (NS - 1);
+    hw = (w1 + (w0 - w1) * Math.pow(1 - u, 1.15) + grow) / 2; const nx = -dy / l, ny = dx / l;
+    EL[j].x = P[j].x + nx * hw; EL[j].y = P[j].y + ny * hw; ER[j].x = P[j].x - nx * hw; ER[j].y = P[j].y - ny * hw;
+    if (j === NS - 1) tn = Math.atan2(ny, nx);
+  }
+  ctx.beginPath(); ctx.moveTo(EL[0].x, EL[0].y);
+  for (let j = 1; j < NS - 1; j++) ctx.quadraticCurveTo(EL[j].x, EL[j].y, (EL[j].x + EL[j + 1].x) / 2, (EL[j].y + EL[j + 1].y) / 2);
+  ctx.lineTo(EL[NS - 1].x, EL[NS - 1].y);
+  ctx.arc(P[NS - 1].x, P[NS - 1].y, hw, tn, tn - Math.PI, true); // the round tip
+  for (let j = NS - 2; j > 0; j--) ctx.quadraticCurveTo(ER[j].x, ER[j].y, (ER[j].x + ER[j - 1].x) / 2, (ER[j].y + ER[j - 1].y) / 2);
+  ctx.lineTo(ER[0].x, ER[0].y);
+  ctx.closePath();
+}
 function strokeArm(ctx, P, w0, w1, fill, line, lw) {
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  for (let pass = 0; pass < 2; pass++) {
-    ctx.strokeStyle = pass ? fill : line;
-    for (let j = 0; j < NS - 1; j++) {
-      const u = (j + 0.5) / (NS - 1), w = lerp(w0, w1, u);
-      ctx.lineWidth = pass ? w : w + 2 * lw;
-      ctx.beginPath(); ctx.moveTo(P[j].x, P[j].y); ctx.lineTo(P[j + 1].x, P[j + 1].y); ctx.stroke();
-    }
-  }
+  armPath(ctx, P, w0, w1);
+  ctx.strokeStyle = line; ctx.lineWidth = 2 * lw; ctx.stroke();
+  ctx.fillStyle = fill; ctx.fill();
 }
 function fillArm(ctx, P, w0, w1, fill, grow = 0) { // the arm silhouette in one colour (ice shells, overlays)
-  ctx.strokeStyle = fill; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  for (let j = 0; j < NS - 1; j++) { ctx.lineWidth = lerp(w0, w1, (j + 0.5) / (NS - 1)) + grow; ctx.beginPath(); ctx.moveTo(P[j].x, P[j].y); ctx.lineTo(P[j + 1].x, P[j + 1].y); ctx.stroke(); }
+  armPath(ctx, P, w0, w1, grow); ctx.fillStyle = fill; ctx.fill();
 }
 // the lighter underside: a pale strip along the concave side of the arm, with a row of suckers on it
+// (2026-11-20 speed, p87: the strip's 13 round-capped dashes are one fill of 13 capsules, the same shapes, and the suckers one
+// fill of discs: 2 draws an arm instead of 20, ~140 fewer per octopus a frame)
 function armUnder(ctx, P, w0, side, col, line, big) {
   ctx.lineCap = 'round';
+  ctx.beginPath();
   for (let j = 1; j < NS - 1; j++) {
     const dx = P[j + 1].x - P[j - 1].x, dy = P[j + 1].y - P[j - 1].y, l = Math.hypot(dx, dy) || 1, w = lerp(w0, w0 * 0.2, j / (NS - 1));
-    const nx = (-dy / l) * side, ny = (dx / l) * side, o = w * 0.22;
-    ctx.strokeStyle = rgb(col, 0.95); ctx.lineWidth = Math.max(0.7, w * 0.46);
-    ctx.beginPath(); ctx.moveTo(P[j].x + nx * o - (dx / l) * w * 0.3, P[j].y + ny * o - (dy / l) * w * 0.3); ctx.lineTo(P[j].x + nx * o + (dx / l) * w * 0.3, P[j].y + ny * o + (dy / l) * w * 0.3); ctx.stroke();
-    if (big && j % 2 === 1) { // sucker row: pale discs with a dark centre dot
-      ctx.fillStyle = rgb(line, 0.9);
-      ctx.beginPath(); ctx.arc(P[j].x + nx * o, P[j].y + ny * o, Math.max(0.45, w * 0.1), 0, TAU); ctx.fill();
-    }
+    const nx = (-dy / l) * side, ny = (dx / l) * side, o = w * 0.22, tx = dx / l, ty = dy / l, r = Math.max(0.7, w * 0.46) / 2;
+    const cx = P[j].x + nx * o, cy = P[j].y + ny * o, h = w * 0.3, an = Math.atan2(tx, -ty); // the dash's normal (-ty, tx)
+    const ax = cx - tx * h, ay = cy - ty * h, bx = cx + tx * h, by = cy + ty * h, qx = -ty * r, qy = tx * r;
+    ctx.moveTo(ax + qx, ay + qy); ctx.lineTo(bx + qx, by + qy); ctx.arc(bx, by, r, an, an - Math.PI, true);
+    ctx.lineTo(ax - qx, ay - qy); ctx.arc(ax, ay, r, an + Math.PI, an, true); ctx.closePath();
   }
+  ctx.fillStyle = rgb(col, 0.95); ctx.fill();
+  if (!big) return;
+  ctx.beginPath(); // sucker row: dark centre dots
+  for (let j = 1; j < NS - 1; j += 2) {
+    const dx = P[j + 1].x - P[j - 1].x, dy = P[j + 1].y - P[j - 1].y, l = Math.hypot(dx, dy) || 1, w = lerp(w0, w0 * 0.2, j / (NS - 1));
+    const nx = (-dy / l) * side, ny = (dx / l) * side, o = w * 0.22, x = P[j].x + nx * o, y = P[j].y + ny * o, r = Math.max(0.45, w * 0.1);
+    ctx.moveTo(x + r, y); ctx.arc(x, y, r, 0, TAU);
+  }
+  ctx.fillStyle = rgb(line, 0.9); ctx.fill();
 }
 
 function mantlePath(ctx, s, sx, sy) {
@@ -277,8 +301,11 @@ export function drawOctopus(ctx, x, y, s, t, o = {}) {
 
 function drawOctoFace(ctx, s, sx, sy, t, tt, o, look, lw, A, pal, brow, pk, frz, stn) {
   const hit = o.hitK > 0.05 ? o.hit : null;
-  const ey = -0.14 * s * sy, ex = 0.22 * s * sx, rx = 0.175 * s, ry = 0.125 * s;
-  const menace = clamp(A.menace, -0.2, 1), smug = clamp(A.smug, 0, 1);
+  const wow = clamp(A.wow || 0, 0, 1) * (stn > 0.01 ? 0 : 1);
+  const ey = -0.14 * s * sy, ex = 0.225 * s * sx, rx = 0.19 * s * (1 + 0.06 * wow), ry = 0.145 * s * (1 + 0.3 * wow); // 0.8.18: eyes 1.1x wide, 1.16x tall (they read at play size)
+  // a resting octopus is never still in the face (2026-11-19): every few seconds a slow smug smirk with one brow up
+  const rest = clamp(1 - A.reach - A.mouth - A.splay, 0, 1), smirk = frz ? 0 : Math.pow(Math.max(0, Math.sin(tt * 0.55 + (o.seed || 0) * 1.3)), 6) * rest;
+  const menace = clamp(A.menace, -0.2, 1) * (1 - wow), smug = clamp(A.smug + 0.75 * smirk, 0, 1) * (1 - wow);
   const slack = stn > 0.01, X = hit === 'zap' || hit === 'flash';
   const heavy = frz ? 0.55 : smug * 0.55 + (hit === 'tired' ? 0.5 : 0); // half-lidded: smug, tired, or frozen mid-blink
   const blink = !frz && !slack && ((tt + (o.seed || 0)) % 4.1 < 0.11) ? 1 : 0;
@@ -302,15 +329,15 @@ function drawOctoFace(ctx, s, sx, sy, t, tt, o, look, lw, A, pal, brow, pk, frz,
       ctx.strokeStyle = rgb(C.pupil); ctx.lineWidth = Math.max(1, ry * 0.36); ctx.lineCap = 'round';
       const d = ry * 0.62; ctx.beginPath(); ctx.moveTo(cx - d, ey - d); ctx.lineTo(cx + d, ey + d); ctx.moveTo(cx + d, ey - d); ctx.lineTo(cx - d, ey + d); ctx.stroke();
     } else { // the slit pupil, eyes locked on the target
-      let lx = 0, ly = 0.12;
+      let lx = frz ? 0 : 0.5 * Math.sin(tt * 0.8 + (o.seed || 0)), ly = 0.12 + (frz ? 0 : 0.2 * Math.sin(tt * 0.53)); // no target: the eyes rove
       if (look) { const dx = look.x - cx, dy = look.y - ey, l = Math.hypot(dx, dy) || 1; lx = dx / l; ly = dy / l; }
       const dil = A.reach > 0.5 ? 1.35 : 1;
       ctx.fillStyle = rgb(C.pupil);
-      ctx.beginPath(); ctx.ellipse(cx + lx * rx * 0.34, ey + ly * ry * 0.34, Math.max(0.7, rx * 0.17 * dil), ry * 1.05, 0, 0, TAU); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(cx + lx * rx * 0.34 * (1 - wow), ey + ly * ry * 0.34 * (1 - wow), Math.max(0.7, rx * (0.17 * dil + 0.2 * wow)), ry * (1.05 - 0.72 * wow), 0, 0, TAU); ctx.fill(); // wow: a round pin pupil
       ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.beginPath(); ctx.arc(cx + lx * rx * 0.34 - rx * 0.28, ey + ly * ry * 0.34 - ry * 0.42, Math.max(0.5, ry * 0.2), 0, TAU); ctx.fill();
     }
     // the lid: a slanted cut, low on the inside (narrowed, mean); a smug octopus is half-lidded
-    const yo = ey - ry * (1.2 - 0.25 * slack) + ry * 2 * heavy * 0.7, yi = yo + ry * (slack ? -0.55 : 0.2 + 1.35 * menace) * (1 - heavy * 0.2) + (blink ? ry * 2 : 0);
+    const yo = ey - ry * (1.2 - 0.25 * slack + 0.3 * wow) + ry * 2 * heavy * 0.7, yi = yo + ry * (slack ? -0.55 : 0.2 * (1 - wow) + 1.35 * menace) * (1 - heavy * 0.2) + (blink ? ry * 2 : 0);
     const xo = cx + sd * rx * 1.4, xi = cx - sd * rx * 1.4;
     ctx.fillStyle = rgb(brow);
     ctx.beginPath(); ctx.moveTo(xo, yo); ctx.lineTo(xi, yi); ctx.lineTo(xi, ey - ry * 2.2); ctx.lineTo(xo, ey - ry * 2.2); ctx.closePath(); ctx.fill();
@@ -320,22 +347,31 @@ function drawOctoFace(ctx, s, sx, sy, t, tt, o, look, lw, A, pal, brow, pk, frz,
     ctx.strokeStyle = rgb(C.line); ctx.lineWidth = lw * 0.9; ctx.stroke();
   }
   // the brow ridge: one heavy V of dark maroon over both eyes (one side raised when it is smug, drooping when stunned)
-  const up = smug * 0.1 * s;
+  const up = smug * 0.1 * s, hi = wow * 0.1 * s; // wow: both brows jump up and arch
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   const bro = (w, col) => {
     ctx.strokeStyle = col; ctx.lineWidth = w;
     for (const sd of [-1, 1]) {
       const raise = sd > 0 ? up : 0, drop = slack ? 0.1 * s : 0; // smug: one brow arched; stunned: both droop outward
       ctx.beginPath();
-      ctx.moveTo(sd * (ex + rx * 1.5), ey - ry * (1.2 + 1.5 * menace) - raise + drop * 1.6);
-      ctx.lineTo(sd * (ex - rx * 1.25), ey - ry * (1.35 - 1.25 * menace) - raise * 0.3 - drop * 0.6);
-      ctx.lineTo(sd * 0.02 * s, ey - ry * (1.25 - 1.15 * menace) - drop * 0.4);
+      ctx.moveTo(sd * (ex + rx * 1.5), ey - ry * (1.2 + 1.5 * menace) - raise + drop * 1.6 - hi * 0.4);
+      ctx.lineTo(sd * (ex - rx * 1.25), ey - ry * (1.35 - 1.25 * menace) - raise * 0.3 - drop * 0.6 - hi * 1.2);
+      ctx.lineTo(sd * 0.02 * s, ey - ry * (1.25 - 1.15 * menace) - drop * 0.4 - hi * 0.6);
       ctx.stroke();
     }
   };
   bro(0.085 * s + lw * 1.6, rgb(C.line)); bro(0.085 * s, rgb(brow));
   // the grin: lopsided, with fangs; open and snarling when it grabs
   const my = 0.24 * s * sy, mo = clamp(A.mouth, 0, 1), g = 0.1 + 0.1 * smug;
+  if (wow > 0.02) { // caught out: a small round 'o' fades in over the grin
+    const r = 0.075 * s * (0.8 + 0.4 * mo);
+    ctx.save(); ctx.globalAlpha *= wow;
+    ctx.beginPath(); ctx.ellipse(0.02 * s, my + 0.02 * s, r * 0.85, r, 0, 0, TAU); ctx.fillStyle = rgb(C.mouth); ctx.fill();
+    ctx.strokeStyle = rgb(C.line); ctx.lineWidth = lw * 0.85; ctx.stroke();
+    ctx.restore();
+    if (wow > 0.98) return;
+  }
+  ctx.save(); ctx.globalAlpha *= 1 - wow;
   const mw = 0.27 * s * sx * (1 + 0.2 * smug);
   ctx.beginPath();
   ctx.moveTo(-mw, my - 0.01 * s);
@@ -350,6 +386,7 @@ function drawOctoFace(ctx, s, sx, sy, t, tt, o, look, lw, A, pal, brow, pk, frz,
       ctx.beginPath(); ctx.moveTo(px - 0.03 * s, py); ctx.lineTo(px + 0.03 * s, py); ctx.lineTo(px, py + (0.05 + 0.04 * mo) * s); ctx.closePath(); ctx.fill();
     }
   }
+  ctx.restore();
 }
 
 function dizzyStars(ctx, s, t, k, seed, side) { // side -1: behind the head, +1: in front. Three stars on a tilted ellipse above the head

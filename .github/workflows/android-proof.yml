@@ -1,10 +1,12 @@
 # Builds the Eggscape Android proof APK (web game inside a WebView shell, eggscape/android)
 # and publishes it as the "web-proof" pre-release so it has a direct download link.
 name: Android proof APK
+# the row's title in the Actions list: which phone it is for and the version, so it cannot be mistaken for the iPhone row
+run-name: "ANDROID APK: Eggscape for Android phones (run ${{ github.run_number }})"
 on:
   workflow_dispatch:
   push:
-    branches: ['claude/project-thread-ah2hnr']
+    branches: ['claude/project-thread-ah2hnr', 'claude/project-thread-3u7q3n', 'claude/project-thread-qrvc8j']
     paths: ['eggscape/android/**', 'eggscape/src/**', 'eggscape/tools/build.mjs', '.github/workflows/android-proof.yml']
 permissions:
   contents: write
@@ -33,6 +35,30 @@ jobs:
           gradle --no-daemon assembleDebug
           cp app/build/outputs/apk/debug/app-debug.apk eggscape-web-proof.apk
           ls -l eggscape-web-proof.apk
+          echo "APK_NAME=eggscape-$(sed -n "s/.*versionName '\\(.*\\)'.*/\\1/p" app/build.gradle)-${GITHUB_REF_NAME##*/}-run${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
+      # every run also keeps its own APK under the run's Artifacts (the release below always holds the newest one)
+      - name: Upload APK as a run artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APK_NAME }}
+          path: eggscape/android/eggscape-web-proof.apk
+          retention-days: 30
+      # the separate everything-unlocked test app: its own app id (installs beside the normal one), every level, chick,
+      # outfit and egg open and a deep purse. Never a store build.
+      - name: Build the unlocked test APK
+        working-directory: eggscape
+        run: |
+          EGG_UNLOCKED=1 sh android/sync-web.sh
+          cd android
+          gradle --no-daemon assembleDebug -Punlocked
+          cp app/build/outputs/apk/debug/app-debug.apk eggscape-unlocked-test.apk
+          ls -l eggscape-unlocked-test.apk
+      - name: Upload the unlocked test APK as a run artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APK_NAME }}-UNLOCKED-test
+          path: eggscape/android/eggscape-unlocked-test.apk
+          retention-days: 30
       - name: Publish pre-release
         working-directory: eggscape/android
         env:

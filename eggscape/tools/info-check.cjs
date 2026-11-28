@@ -19,15 +19,22 @@ const bad = (s) => problems.push(s);
 // board furniture: level keys that are not villains or hazards (a key in neither list fails the check)
 const BOARD = new Set(['id', 'key', 'kind', 'theme', 'name', 'eggs', 'target', 'time', 'spacing', 'material', 'nest', 'bonus', 'tip', 'seed', 'world', 'intro',
   'rings', 'orbs', 'portals', 'barriers', 'weatherOpts', 'eggKinds', 'water', 'shape', 'rock', 'boss', 'chickEggs', 'allies', 'pitch', 'wonder', 'r0', 'solve', 'fails', 'cw']);
+BOARD.add('softCurtain'); // a flag on the level that first teaches the thorn curtain (that curtain only cracks): board, like gap.curtain
 const RING_BOARD = new Set(['gaps', 'thorns', 'pads', 'mat', 'gear', 'oneway', 'ice', 'honey', 'shape', 'fixed', 'grate']);
+RING_BOARD.add('motor'); // 0.8.18 side quests: a ring that turns on its own (specs.js ring field), board like gear
 const GAP_BOARD = new Set(['a', 'len', 'x', 'shut', 'curtain', 'grate']);
 // villain / hazard keys -> table kind
 const CREATURE = ['snake', 'weasel', 'rats', 'octopus', 'fish', 'frog', 'eagle', 'salamander', 'chameleon', 'hermit', 'puffer', 'jelly', 'gator', 'turtle', 'mosquito', 'spider', 'beetle', 'jack'];
+CREATURE.push('penguin'); // 0.8.17 pip
+CREATURE.push('urchin'); // 0.8.17 urchin
+CREATURE.push('monkey'); // 0.8.17 coco
 const HAZARD_KEY = { icicles: 'icicles', lava: 'lava', gusts: 'gusts', wind: 'gusts' };
 const WEATHER = { thunder: 'lightning', current: 'current', embers: 'embers', quake: 'quake', rain: 'rain' };
+const SKY = new Set(['none', 'fireflies', 'leaves', 'snow', 'fog', 'ghosts', 'ash', 'sandstorm']); // weather that is only a picture (no rule changes in sim/): nothing to explain
 const ORB = { curse: 'curse', thorn: 'thornorb' };
 const listOf = (v) => (!v ? [] : Array.isArray(v) ? v : [v]);
 
+let COSTUME = () => 'bow'; // (set from src/render/costume.js before the scan)
 function scan(L, where, INFO) {
   const want = new Set();
   const F = L.bossFight, boss = F && (F.kind || L.boss);
@@ -40,19 +47,22 @@ function scan(L, where, INFO) {
     }
   }
   for (const k of Object.keys(L)) {
-    if (BOARD.has(k) || k === 'bossFight' || k === 'weather') continue;
+    if (BOARD.has(k) || k === 'bossFight' || k === 'weather' || k === 'dyn') continue; // 0.8.19 (aggroB) dyn: the level's multipliers on its villains' rows (data/dynamism.js), not a villain
     if (CREATURE.includes(k)) {
       const n = listOf(L[k]).length;
       if ((k === 'snake' && boss === 'snake') || (k === 'eagle' && boss === 'eagle') || (k === 'salamander' && boss === 'salamander' && n === 1)) continue;
       if (n) want.add(k);
     } else if (HAZARD_KEY[k]) want.add(HAZARD_KEY[k]);
+    else if (k === 'raccoon') want.add('boss:raccoon'); // 0.8.17 bandit: the raccoon boss's own key
+    else if (k === 'kits') want.add('kits:' + ((L.kits && L.kits.costume) || COSTUME(L.theme))); // 0.8.18 mama raccoon, in her world's costume
     else bad(`${where}: level key "${k}" is neither a villain/hazard nor known board furniture`);
   }
-  if (L.weather) { if (WEATHER[L.weather]) want.add(WEATHER[L.weather]); else bad(`${where}: weather "${L.weather}" not in the table`); }
+  if (L.weather && !SKY.has(L.weather)) { if (WEATHER[L.weather]) want.add(WEATHER[L.weather]); else bad(`${where}: weather "${L.weather}" not in the table`); }
   for (const [ri, r] of (L.rings || []).entries()) {
     for (const k of Object.keys(r)) {
       if (k === 'retract') want.add('popthorns');
       else if (k === 'vine' || k === 'vineOpts') want.add('vines');
+      else if (k === 'creep') want.add('creeper'); // 0.8.18 the moving thorn
       else if (!RING_BOARD.has(k)) bad(`${where}: ring ${ri} key "${k}" unknown`);
     }
     for (const g of r.gaps || []) for (const k of Object.keys(g)) { if (k === 'vine') want.add('vines'); else if (!GAP_BOARD.has(k)) bad(`${where}: gap key "${k}" unknown`); }
@@ -66,11 +76,12 @@ function scan(L, where, INFO) {
 (async () => {
   const imp = (f) => import(path.join(root, 'src/data', f));
   const { VILLAIN_INFO: INFO } = await imp('villain-info.js');
+  COSTUME = (await import(path.join(root, 'src/render/costume.js'))).costumeOf;
   const { LEVELS } = await imp('levels.js');
   const { DAILY } = await imp('daily.js');
   const { WONDER_LEVELS } = await imp('wonder-levels.js');
   const demos = [];
-  for (const f of ['chick-demos', 'sea-demos', 'power-demos', 'thief-demo', 'ally-demos', 'reef-demos', 'bayou-demos', 'lab-demos', 'frog-demo']) for (const v of Object.values(await imp(f + '.js'))) demos.push(...listOf(v));
+  for (const f of ['chick-demos', 'sea-demos', 'power-demos', 'thief-demo', 'ally-demos', 'reef-demos', 'bayou-demos', 'lab-demos', 'frog-demo', 'pip-demo', 'coco-demo']) for (const v of Object.values(await imp(f + '.js'))) demos.push(...listOf(v));
   // the table itself: every entry has its lines, none over ~70 characters (80 is a hard stop)
   for (const [k, I] of Object.entries(INFO)) {
     for (const f of ['name', 'does', 'beat', 'group']) if (!I[f]) bad(`table ${k}: no ${f}`);
@@ -100,11 +111,13 @@ function scan(L, where, INFO) {
     const runs = [...LEVELS.map((L, i) => ({ id: 'L' + (i + 1), i })), ...labs.map((k) => ({ id: 'demo:' + k, demo: k })), ...wonders.map((k) => ({ id: 'wonder:' + k, demo: k, wonder: 1 }))];
     for (const R of runs) {
       const r = await p.evaluate(async (R) => {
-        const E = __egg, G = E.G;
+        const E = __egg, G = E.G; E.save.seen.pickN = 5; // past the first-timer chick pick (PLAY would open the Chicks tab)
         if (R.wonder) E.startDemo(R.demo); else if (R.demo) { G.screen = 'practice'; await E.press('demo:' + R.demo); } else E.start(R.i); // a practice tile, as the Practice screen opens it
         if (!R.wonder) E.press('go');
         for (let k = 0; k < 30; k++) E.frame(1 / 60);
-        const hud = !R.wonder && E.uiRect('btn:info'); // the HUD button is there when (and only when) the list is not empty
+        // 2026-11-19: no HUD "i" any more; the pause page lists the villains (checked: same kinds, no overlaps)
+        let pk = null, pov = [];
+        if (!R.wonder && G.screen === 'play') { E.press('pause'); for (let k = 0; k < 20; k++) E.frame(1 / 60); pk = (G.pauseKinds || []).slice(); pov = E.overlaps(); E.press('resume'); for (let k = 0; k < 3; k++) E.frame(1 / 60); }
         const kinds = R.wonder ? E.openInfo() : G.infoKinds.slice();
         if (!R.wonder) { if (kinds.length) E.press('info'); else E.openInfo(); }
         let ov = [];
@@ -112,13 +125,14 @@ function scan(L, where, INFO) {
         const S = G.iscroll; S.y = S.max; E.frame(1 / 60); ov = ov.concat(E.overlaps());
         const screen = G.screen;
         E.press('info:close'); E.frame(1 / 60);
-        return { kinds, hud: !!hud, screen, back: G.screen, missing: kinds.filter((k) => !E.VILLAIN_INFO[k]), ov: ov.map((o) => o.join(' x ')) };
+        return { kinds, pk, pov: pov.map((o) => o.join(' x ')), screen, back: G.screen, missing: kinds.filter((k) => !E.VILLAIN_INFO[k]), ov: ov.map((o) => o.join(' x ')) };
       }, R);
       opened++;
       const where = `${w}x${h} ${R.id}`;
       if (r.screen !== 'info') bad(`${where}: the panel did not open (screen ${r.screen})`);
       if (r.missing.length) bad(`${where}: kinds missing from the table: ${r.missing.join(', ')}`);
-      if (!R.wonder && r.hud !== r.kinds.length > 0) bad(`${where}: HUD "i" shown=${r.hud} but ${r.kinds.length} kinds`);
+      if (r.pk && r.R !== 0 && R.i !== undefined && r.pk.length !== r.kinds.filter((k) => k).length && r.pk.length < 8) bad(`${where}: pause page lists ${r.pk.length} villains, the panel ${r.kinds.length}`);
+      if (r.pov && r.pov.length) bad(`${where}: pause page overlaps: ${r.pov.join('; ')}`);
       if (r.ov.length) bad(`${where}: overlaps: ${r.ov.join('; ')}`);
       const exp = expect[R.id];
       if (exp) for (const k of exp) if (!r.kinds.includes(k)) bad(`${where}: the level has "${k}" but the panel does not list it`);

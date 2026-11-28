@@ -125,8 +125,16 @@ function beaten(S, dt, t) {
   return el;
 }
 
+// faces3: where the nearest egg is, as a look in the head's frame (x ahead, y to its right on screen), or null
+function eggLook(sim, sn, hd) {
+  let best = null, bd = 6;
+  for (const e of sim.eggs) { if (!e.alive || e.saved) continue; const p = e.body.getPosition(), d = Math.hypot(p.x - sn.x, p.y - sn.y); if (d < bd) { bd = d; best = p; } }
+  if (!best) return null;
+  const rel = hd - Math.atan2(best.y - sn.y, best.x - sn.x);
+  return { x: Math.cos(rel), y: Math.sin(rel) };
+}
 // ctx: world space (meters, y up). k: pixels per meter.
-export function drawCham26(ctx, sim, C, k, t) {
+export function drawCham26(ctx, sim, C, k, t, calm = false) {
   const S = stateOf(sim, C, t);
   const dt = clamp(t - S.t, 0, 0.05);
   S.t = t;
@@ -151,13 +159,23 @@ export function drawCham26(ctx, sim, C, k, t) {
     trail: (d) => { const q = bodyAt(S, d / k); return { x: q.x * k, y: -q.y * k }; }, status: st, out, target: tgt || undefined,
     camo: S.camo, camoColor: S.col || undefined,
   };
+  // faces3: smug while he digests a stolen orb (and grins at the end), "huh?" when the tongue snaps on nothing; on the
+  // prowl his main eye swivels to the nearest egg
+  const wantM = C.ph === 'digest' || C.ph === 'grin' ? 'smug' : C.ph === 'miss' ? 'huh' : '';
+  if (wantM) { S.mood = wantM; S.mk = Math.min(1, (S.mk || 0) + dt * 6); } else S.mk = Math.max(0, (S.mk || 0) - dt * 2.5);
+  if (S.mk > 0.01 && S.mood) { o.mood = S.mood; o.moodK = S.mk; }
+  if (C.ph === 'walk' && !(S.hunt > 0.3)) { const el2 = eggLook(sim, sn, S.hd); if (el2) o.look = { x: lerp(S.look.x, el2.x, 0.85), y: lerp(S.look.y, el2.y, 0.85) }; }
   if (nap) o.blink = 1;
   else if (C.ph === 'miss') { const el = C.dur - C.t; o.blink = el > 0.4 && el < 0.95 ? (Math.sin((el - 0.4) * 22) > 0 ? 0.85 : 0.35) : undefined; } // annoyed blinks
+  const gk = ghostK(C); // (aggroB) vanish: he fades to a faint glassy ripple and creeps, then pops back in a flourish
+  if (gk > 0) ctx.globalAlpha = alpha * (1 - gk);
   ctx.scale(1 / k, -1 / k);
-  drawCrawler(ctx, sn.x * k, -sn.y * k, L * k, frozen ? st.hold : t, o, 'chameleon');
+  if (gk < 0.995) drawCrawler(ctx, sn.x * k, -sn.y * k, L * k, frozen ? st.hold : t, o, 'chameleon'); // 0.8.19: gone is not drawn
   // the orb rides the tongue's tip back in
   if (C.ph === 'reel' && C.held && out.tongue) drawOrb(ctx, C.held.type, out.tongue.x, out.tongue.y, 0.2 * k * (0.75 + 0.25 * out.tongue.k), t, true);
   ctx.scale(k, -k);
+  ctx.globalAlpha = alpha;
+  if (gk > 0) ghost(ctx, sim, C, S, L, gk, t, calm);
   if (S.shim > 0) shimmer(ctx, S, L, t);
   if (C.ph === 'digest' && t - S.gulpT < 0.75) gulp(ctx, S, L, (t - S.gulpT) / 0.75, C);
   if (C.ph === 'lock') throat(ctx, S, clamp(1 - C.t / CHAM.lock, 0, 1), t);
@@ -168,6 +186,45 @@ export function drawCham26(ctx, sim, C, k, t) {
     const f = C.dur / 0.7, n = sim.rings.length, ring = sim.rings[n - 1], ga = ring.body.getAngle() + C.ent.la, r = ring.r + 0.1;
     ctx.globalAlpha = 0.7 * (1 - f); ctx.fillStyle = '#9fe07a';
     for (let i = 0; i < 6; i++) { const aa = ga + (hash(i + 1) - 0.5) * 0.25, rr = r + (hash(i + 7) - 0.3) * 0.5 * f; ctx.beginPath(); ctx.ellipse(rr * Math.cos(aa), rr * Math.sin(aa), 0.05 + 0.08 * f, 0.03, aa + f * 3, 0, TAU); ctx.fill(); }
+  }
+  ctx.restore();
+}
+
+// (aggroB) the vanish: 0 = seen, 1 = a ghost (fade in, ghost walk, pop out)
+function ghostK(C) {
+  // 0.8.19: the fade is over in VANISH_SEEN s (a shimmer), the rest of the sim's fade phase he is already gone
+  if (C.ph === 'fade') return sstep(clamp((C.dur - C.t) / VANISH_SEEN, 0, 1));
+  if (C.ph === 'pop') return 1 - sstep((C.dur - C.t) / (C.dur || 1));
+  return C.gh ? 1 : 0;
+}
+const VANISH_SEEN = 0.35; // s
+// 0.8.19 the vanish is a real vanish (the owner: "it should go fully invisible and show up somewhere else"): while he
+// fades a glassy shimmer sparkles off him; gone, nothing of him is drawn (Easy keeps a faint heat-ripple so a small kid can
+// still follow him); the pop is a telegraph right where he comes back: a leaf-green ring closes on the spot and a burst of
+// colour, then the lock tell (never under TELL_MIN) before the tongue
+function ghost(ctx, sim, C, S, L, gk, t, calm) {
+  ctx.save(); ctx.lineCap = 'round';
+  const easy = sim.mode === 'easy';
+  if (C.ph === 'fade' && gk < 1) { // the shimmer: sparkles lift off his back as the colour drains
+    for (let i = 0; i < 9; i++) {
+      const c = bodyAt(S, L * (0.05 + 0.1 * i)), w = Math.sin(gk * Math.PI), dy = 0.12 * gk + 0.04 * Math.sin(t * 9 + i * 2.1);
+      ctx.globalAlpha = 0.9 * w; ctx.fillStyle = i % 2 ? '#e8fff4' : '#bff7d8';
+      ctx.beginPath(); ctx.arc(c.x + 0.05 * Math.sin(i * 1.7 + t * 6), c.y + dy, 0.035 + 0.03 * w, 0, TAU); ctx.fill();
+    }
+  } else if (C.ph !== 'pop' && easy) { // Easy only: a faint heat-ripple along his back
+    ctx.strokeStyle = '#e8fff4'; ctx.lineWidth = 0.025;
+    for (let i = 0; i < 6; i++) {
+      const c = bodyAt(S, L * (0.1 + 0.22 * i)), w = (calm ? 0.5 : 0.5 + 0.5 * Math.sin(t * 7 - i * 1.3));
+      ctx.globalAlpha = 0.16 * gk * w; ctx.beginPath(); ctx.arc(c.x, c.y, 0.07 + 0.03 * w, 0, TAU); ctx.stroke();
+    }
+  }
+  if (C.ph === 'pop') {
+    const f = clamp((C.dur - C.t) / (C.dur || 1), 0, 1), h = bodyAt(S, L * 0.3), cols = ['#9fe07a', '#ffd34d', '#ff7aa8', '#7ad7ff'];
+    const rr = 0.9 - 0.55 * f; ctx.globalAlpha = 0.95 * (1 - 0.3 * f); ctx.strokeStyle = '#1d3d12'; ctx.lineWidth = 0.13; // the telegraph ring closes on him
+    ctx.beginPath(); ctx.arc(h.x, h.y, rr, 0, TAU); ctx.stroke();
+    ctx.strokeStyle = '#c8ff8a'; ctx.lineWidth = 0.075; ctx.beginPath(); ctx.arc(h.x, h.y, rr, 0, TAU); ctx.stroke();
+    ctx.globalAlpha = 0.35 * (1 - f); ctx.fillStyle = '#c8ff8a'; ctx.beginPath(); ctx.arc(h.x, h.y, rr, 0, TAU); ctx.fill();
+    for (let i = 0; i < 8; i++) { const a = (i * TAU) / 8 + (calm ? 0 : f), r = 0.15 + 0.45 * f; ctx.globalAlpha = 0.9 * (1 - f); ctx.fillStyle = cols[i % 4]; ctx.beginPath(); ctx.arc(h.x + Math.cos(a) * r, h.y + Math.sin(a) * r, 0.06 * (1 - f * 0.5), 0, TAU); ctx.fill(); }
   }
   ctx.restore();
 }

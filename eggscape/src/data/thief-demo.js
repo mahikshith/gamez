@@ -20,4 +20,13 @@ export const THIEF_DEMOS = [
     ...base, id: 914, kind: 'ratking', name: 'The Rat King (studio)', theme: 'vault', material: 'metal', world: 7, boss: 'ratking', rats: { n: 2, delay: 4 },
     bossFight: { kind: 'ratking', delay: 2, den: { a: -50, hp: 4 }, throws: ['curse', 'thorn'], phases: [{ attacks: [], every: 6 }, { at: { saved: 1, t: 35 }, attacks: ['throw', 'fog'], every: 6 }] },
   },
+  { // 0.8.17 bandit: the raccoon boss (sim/bandit.js); 0.8.18: he climbs onto the outer ring's floor and cranks it
+    ...base, id: 915, kind: 'bandit', name: 'Bandit (studio)', boss: 'raccoon', eggs: 4, weasel: { a: 30, delay: 9999 }, raccoon: { delay: 2 },
+    bossFight: { kind: 'raccoon', delay: 2, phases: [{ attacks: [] }] }, tip: 'Turn his ring against him!',
+    rings: [...rings.slice(0, 3), { gaps: [{ a: -125 }, { a: 20 }], thorns: [{ a: 100, n: 2 }] }],
+  },
+  { // 0.8.18 kits: mama raccoon unties her sack on the yard and her kits come in for an egg (sim/kits.js)
+    ...base, id: 916, kind: 'kits', name: 'Mama Raccoon (studio)', kits: { delay: 2 }, tip: 'Turn their ring hard: they tumble and drop it.',
+    rings: [...rings.slice(0, 3), { gaps: [{ a: -40 }, { a: 150 }], thorns: [{ a: 100, n: 2 }] }],
+  },
 ];

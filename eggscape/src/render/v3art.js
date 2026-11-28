@@ -5,6 +5,7 @@ import { dizzyStars, spiralEye } from './status.js';
 
 const TAU = Math.PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+const lerp = (a, b, k) => a + (b - a) * k;
 const mod = (a, b) => ((a % b) + b) % b;
 const hash = (n) => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
 const safe = (ctx, f) => { ctx.save(); try { f(); } catch (e) { /* never break the frame */ } ctx.restore(); };
@@ -360,6 +361,12 @@ export function drawEagle(ctx, cx, cy, s, t = 0, opts = {}) {
     const P = blendPose(opts.w || { glide: 1 }, { phase: opts.phase || 0 }, t);
     if (opts.toes != null) P.toes = clamp(opts.toes, 0, 1);
     if (opts.beak != null) P.beak = Math.max(P.beak, opts.beak);
+    // 0.8.18 faces (weasel818): the head drawn 1.22x about the neck and the eye a further 1.25x, so the face reads at
+    // play size; smug 0..1 (a held egg, a gloat: half-moon lids, the brow up) and shock 0..1 (a strike that missed: wide,
+    // pin pupil, brow high, beak dropped) act on the eye
+    // faces3: at play size (under ~180 px) the eye grows a further 1.2x; opts.look {x, y} (-1..1, x = forward) aims the pupil at the egg
+    const HS = opts.hs ?? 1.22, ES = 1.25 * (1 + 0.2 * clamp((180 - s) / 80, 0, 1)), lkx = clamp(opts.look ? opts.look.x : 0.6, -1, 1), lky = clamp(opts.look ? opts.look.y : 0, -1, 1), smug = clamp(opts.smug || 0, 0, 1), shock = clamp(opts.shock || 0, 0, 1) * (1 - clamp(P.wide, 0, 1));
+    P.beak = Math.max(P.beak, shock * 0.85);
     const pitch = (opts.pitch || 0) + P.pitch * D2R, bank = clamp(opts.roll || 0, -1, 1), roll = bank * 30;
     P.eF -= Math.abs(bank) * 34; P.eN -= Math.abs(bank) * 14;
     const ow = clamp(s * 0.021, 1.15, 3.4) / k; // outline in body units: about 1.2..3.4 px whatever the size
@@ -429,7 +436,7 @@ export function drawEagle(ctx, cx, cy, s, t = 0, opts = {}) {
     // head (white) + beak, turned about the neck
     const hr = P.head * D2R, nx = 23 + P.neck, ny = -9;
     const head = new Path2D();
-    const H = (x, y) => { const c = Math.cos(hr), sn = Math.sin(hr), X = x - 23, Y = y + 9; return [nx + X * c - Y * sn, ny + X * sn + Y * c]; };
+    const H = (x, y) => { const c = Math.cos(hr), sn = Math.sin(hr), X = (x - 23) * HS, Y = (y + 9) * HS; return [nx + X * c - Y * sn, ny + X * sn + Y * c]; };
     const hm = (x, y) => { const q = H(x, y); head.moveTo(q[0], q[1]); };
     const hb = (a, b, c, d, e, f) => { const q1 = H(a, b), q2 = H(c, d), q3 = H(e, f); head.bezierCurveTo(q1[0], q1[1], q2[0], q2[1], q3[0], q3[1]); };
     const hl = (a, b) => { const q = H(a, b); head.lineTo(q[0], q[1]); };
@@ -471,7 +478,7 @@ export function drawEagle(ctx, cx, cy, s, t = 0, opts = {}) {
     ctx.clip(head);
     ctx.fillStyle = EG.whiteLo;
     const q0 = H(30, 4);
-    ctx.beginPath(); ctx.ellipse(q0[0], q0[1], 17, 10, hr - 0.25, 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(q0[0], q0[1], 17 * HS, 10 * HS, hr - 0.25, 0, TAU); ctx.fill();
     ctx.restore();
 
     // near leg (in front of the body); tucked legs vanish into the belly feathers
@@ -500,40 +507,45 @@ export function drawEagle(ctx, cx, cy, s, t = 0, opts = {}) {
     ctx.stroke(lower); ctx.fillStyle = EG.beakLo; ctx.fill(lower);
     ctx.stroke(upper); ctx.fillStyle = EG.beak; ctx.fill(upper);
     ctx.save(); ctx.clip(upper);
-    const qh = H(46, -21); ctx.fillStyle = EG.beakHi; ctx.beginPath(); ctx.ellipse(qh[0], qh[1], 6, 2.4, hr + 0.15, 0, TAU); ctx.fill();
-    const ql = H(50, -12); ctx.fillStyle = EG.beakLo; ctx.beginPath(); ctx.ellipse(ql[0], ql[1], 8, 2.6, hr + 0.3, 0, TAU); ctx.fill();
+    const qh = H(46, -21); ctx.fillStyle = EG.beakHi; ctx.beginPath(); ctx.ellipse(qh[0], qh[1], 6 * HS, 2.4 * HS, hr + 0.15, 0, TAU); ctx.fill();
+    const ql = H(50, -12); ctx.fillStyle = EG.beakLo; ctx.beginPath(); ctx.ellipse(ql[0], ql[1], 8 * HS, 2.6 * HS, hr + 0.3, 0, TAU); ctx.fill();
     ctx.restore();
     // cere line + nostril
     ctx.lineWidth = ow * 0.7; ctx.strokeStyle = EG.beakLo;
     let a0 = H(43.2, -21.4), a1 = H(42.6, -13.2);
     ctx.beginPath(); ctx.moveTo(a0[0], a0[1]); ctx.lineTo(a1[0], a1[1]); ctx.stroke();
-    a0 = H(45.8, -17.6); ctx.fillStyle = EG.line; ctx.beginPath(); ctx.arc(a0[0], a0[1], 0.9, 0, TAU); ctx.fill();
+    a0 = H(45.8, -17.6); ctx.fillStyle = EG.line; ctx.beginPath(); ctx.arc(a0[0], a0[1], 0.9 * HS, 0, TAU); ctx.fill();
 
     // eye under a heavy brow: squints to a slit when it locks on, goes wide and empty when dazed
     const ec = H(35.5, -17.5), blink = clamp(opts.eye == null ? 1 : opts.eye, 0, 1);
-    const wide = clamp(P.wide, 0, 1), sq = clamp(P.squint, 0, 1) * (1 - wide);
-    const er = 3.5 + wide * 0.9, open = blink * (1 - 0.55 * sq);
+    const wide = clamp(P.wide, 0, 1), sq = clamp(P.squint, 0, 1) * (1 - wide) * (1 - shock) * (1 - smug * 0.7);
+    const er = 3.5 + wide * 0.9 + shock * 0.6, open = blink * (1 - 0.55 * sq) * (1 - 0.3 * smug), eo = ow / (HS * ES);
     ctx.save();
     ctx.translate(ec[0], ec[1]);
     ctx.rotate(hr);
+    ctx.scale(HS * ES, HS * ES);
     const eye = new Path2D();
     eye.ellipse(0, 0, er * 1.1, er, 0, 0, TAU);
     ctx.save();
     ctx.clip(eye);
     ctx.fillStyle = EG.iris; ctx.fill(eye);
     ctx.fillStyle = EG.pupil;
-    ctx.beginPath(); ctx.arc(0.9 + sq * 0.5, 0.2, er * (wide ? 0.32 : 0.56), 0, TAU); ctx.fill();
+    const pxp = lerp(lkx * er * 0.42, -er * 0.35, smug * 0.8) + sq * 0.5, pyp = 0.2 + lky * er * 0.38 * (1 - smug); // faces3: on the egg; smug: a sidelong look back at you
+    ctx.beginPath(); ctx.arc(pxp, pyp, er * (wide ? 0.32 : 0.56 * (1 - 0.6 * shock)), 0, TAU); ctx.fill();
     ctx.fillStyle = '#fff';
     ctx.beginPath(); ctx.arc(-0.4, -1.3, er * 0.24, 0, TAU); ctx.fill();
     // lids close from the top (blink, squint)
     ctx.fillStyle = EG.white;
     ctx.fillRect(-er * 1.4, -er * 1.2, er * 2.8, er * 2.2 * (1 - open) + 0.01);
+    const lo = er * 0.8 * smug; // smug: the lower lid rises (a half moon)
+    if (lo > 0.05) ctx.fillRect(-er * 1.4, er - lo, er * 2.8, lo + er * 0.3);
     ctx.restore();
-    ctx.lineWidth = ow * 0.9; ctx.strokeStyle = EG.line; ctx.stroke(eye);
+    ctx.lineWidth = eo * 0.9; ctx.strokeStyle = EG.line; ctx.stroke(eye);
     if (open < 0.98) { const ly = -er + 2 * er * (1 - open); ctx.beginPath(); ctx.moveTo(-er * 1.1, ly); ctx.lineTo(er * 1.1, ly + 0.3); ctx.stroke(); }
+    if (lo > 0.05) { ctx.beginPath(); ctx.moveTo(-er * 1.05, er - lo + 0.3); ctx.quadraticCurveTo(0, er - lo - 0.5, er * 1.05, er - lo + 0.2); ctx.stroke(); }
     if (wide > 0.5) spiralEye(ctx, 0, 0, er * 0.95, t, 1, EG.pupil); // dazed: a spiral in the eye
     // brow ridge: a white shelf with a dark underside, lower and steeper as it squints
-    const bt = -er - 0.8 + sq * 1.6 - wide * 1.8;
+    const bt = -er - 0.8 + sq * 1.6 - wide * 1.8 - shock * 1.3 - smug * 0.8;
     const brow = new Path2D();
     brow.moveTo(-er * 1.9, bt - 2.2 - wide);
     brow.quadraticCurveTo(0, bt - 3.8 - wide, er * 1.9, bt + 0.6 + sq * 1.6);
@@ -541,8 +553,13 @@ export function drawEagle(ctx, cx, cy, s, t = 0, opts = {}) {
     brow.quadraticCurveTo(0, bt - 0.8, -er * 1.6, bt - 0.2);
     brow.closePath();
     ctx.fillStyle = EG.white; ctx.fill(brow);
-    ctx.lineWidth = ow * 1.15; ctx.strokeStyle = EG.line;
+    ctx.lineWidth = eo * 1.15; ctx.strokeStyle = EG.line;
     ctx.beginPath(); ctx.moveTo(-er * 1.55, bt - 0.2); ctx.quadraticCurveTo(0, bt - 0.8, er * 1.5, bt + 2.0 + sq * 1.8); ctx.stroke();
+    if (shock > 0.15) { // faces3: the take: three snap lines off the brow
+      ctx.save(); ctx.globalAlpha *= clamp((shock - 0.15) * 2, 0, 1); ctx.lineCap = 'round';
+      for (const [w, c] of [[eo * 2.2, EG.line], [eo * 1.0, '#fff6d0']]) { ctx.lineWidth = w; ctx.strokeStyle = c; ctx.beginPath(); for (const a of [-2.3, -1.75, -1.2]) { ctx.moveTo(Math.cos(a) * er * 2.1, bt - 1 + Math.sin(a) * er * 1.2); ctx.lineTo(Math.cos(a) * er * 3, bt - 1 + Math.sin(a) * er * 2.1); } ctx.stroke(); }
+      ctx.restore();
+    }
     ctx.restore();
 
     // near wing: in front of the body; its root disappears under the scapular feathers
@@ -1183,87 +1200,170 @@ export function drawEggKind(ctx, kind, cx, cy, rx, ry, rot = 0, t = 0, cracks = 
 /* --------------------------------------------------------- THORN CURTAIN */
 
 // Thorn curtain hanging across a gap (only fire clears it). len = gap width px, h = hang length px.
-export function drawThornCurtain(ctx, cx, cy, len, h, t = 0, burn = 0) {
-  if (!(len > 0 && h > 0)) return;
+// Thorn curtain, rebuilt 2026-11-20 (mykee: "reddish white in small thorns... looks like an infection", "not properly
+// shown to the user"). A bramble gate: two thick green canes braided across the gap from a root knot on each ring
+// end, a few BIG thorns in the ring thorns' own look (red, two facets, cream rim) and a couple of leaves. It follows
+// the ring's curve, and fire eats it from the middle out. Local frame = world.js onRing at the ring's centre line:
+// +x along the ring, +y out of it; R = the ring's radius in px, th = the ring band's thickness in px.
+//   o.hot   an egg is carrying a flame: the canes glow, so the player sees what the flame is for
+//   o.calm  reduced motion: it stands still
+// how far the fire has eaten from the middle of the gap (same units as len; th = ring band thickness)
+export const curtainFront = (len, th, burn) => (burn > 0 ? (len / 2 + th * 0.3) * Math.pow(Math.min(1, burn), 0.8) : 0);
+// a thorn vine is the same bramble growing across (u: 0..1) and burning back from its tip: where that tip is, from the gap's middle
+export const vineFront = (len, th, u, burn) => -(len / 2 + th * 0.3) + (len + th * 0.6) * Math.max(0, Math.min(1, u)) * (1 - burn * 0.85);
+const BRAMBLE = { cane: '#4f8f37', back: '#356a2c', vein: '#b4e372', edge: '#132812', knot: '#6a4526', knotLit: '#9a6c3c', leaf: '#62b23c', leafLit: '#96d65e', th: '#d23a3a', thLit: '#ea634c', thShade: '#93282f', thEdge: '#3a0d0d', rim: 'rgba(255,240,214,0.92)', char: '#2b1a16', charTh: '#5a2030' };
+export function drawThornCurtain(ctx, len, th, R, t = 0, burn = 0, o = {}) {
+  if (!(len > 0 && th > 0)) return;
   safe(ctx, () => {
     burn = clamp(burn || 0, 0, 1);
-    ctx.translate(cx, cy);
-    const o = lw(1.2, h * 0.025), n = Math.max(3, Math.round(len / Math.max(6, h * 0.34)));
+    const B = BRAMBLE, tt = o.calm ? 0 : t;
+    R = Math.max(R || 0, len * 0.6);
+    const half = len / 2 + th * 0.3; // the canes run into the root knots that sit over the ring ends
+    const P = (s, d) => { const a = s / R, q = R + d; return [q * Math.sin(a), q * Math.cos(a) - R]; };
+    // where the light comes from (screen top-left), in this turned frame
+    const m = ctx.getTransform(), det = m.a * m.d - m.b * m.c || 1;
+    const nrm = (x, y) => { const l = Math.hypot(x, y) || 1; return [x / l, y / l]; };
+    const light = nrm((m.c - m.d) / det, (m.b - m.a) / det);
+    const amp = th * 0.72, caneW = th * 0.6, ol = lw(1.6, th * 0.22), wn = (Math.PI * 3) / (2 * half), rock = 0.3 * Math.sin(tt * 1.1);
+    const gone = curtainFront(len, th, burn); // the burnt-out middle
+    const dAt = (s, ph) => { const f = (s + half) / (2 * half), env = Math.min(1, Math.sin(Math.PI * clamp(f, 0, 1)) * 2.4); return amp * env * Math.sin(s * wn + ph + rock); };
+    const path = (ph, s0, s1) => {
+      const n = Math.max(3, Math.ceil(Math.abs(s1 - s0) / (th * 0.3)));
+      ctx.beginPath();
+      for (let i = 0; i <= n; i++) { const s = s0 + ((s1 - s0) * i) / n, [x, y] = P(s, dAt(s, ph)); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+    };
+    const charK = burn > 0 ? Math.min(1, burn * 1.6) : 0;
+    const mixc = (a, b, k) => { const pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16), c = (sh) => Math.round(((pa >> sh) & 255) + (((pb >> sh) & 255) - ((pa >> sh) & 255)) * k); return `rgb(${c(16)},${c(8)},${c(0)})`; };
+    const caneCol = charK ? mixc(B.cane, B.char, charK) : B.cane, backCol = charK ? mixc(B.back, B.char, charK) : B.back;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    const reach = h * (1 - burn * 0.92);
-    const sway = (x, y) => Math.sin(t * 2 + x * 0.25 + y * 0.05) * Math.min(2.5, len * 0.02) * (y / h);
-    const sp = [];
-    for (let i = 0; i < n; i++) sp.push({ x0: -len / 2 + (len * (i + 0.5)) / n, ln: reach * (0.78 + 0.22 * hash(i * 2 + 1)), ph: hash(i + 7) * 6 });
-    // rail the curtain grows from
-    ctx.beginPath();
-    ctx.moveTo(-len / 2 - 2, 0);
-    ctx.lineTo(len / 2 + 2, 0);
-    ctx.lineWidth = o * 3.2;
-    ctx.strokeStyle = '#2a0a12';
-    ctx.stroke();
-    ctx.lineWidth = o * 1.6;
-    ctx.strokeStyle = '#8a2234';
-    ctx.stroke();
-    const charred = burn > 0;
-    const vineCol = charred ? `rgb(${Math.round(122 - 80 * burn)},${Math.round(29 - 10 * burn)},${Math.round(46 - 24 * burn)})` : '#8a1f33';
-    // cross vines weaving between strands
-    ctx.lineWidth = o * 1.4;
-    ctx.strokeStyle = vineCol;
-    for (const yk of [0.35, 0.65]) {
-      const y = reach * yk;
-      ctx.beginPath();
-      sp.forEach((s, i) => { const x = s.x0 + sway(s.x0, y), yy = y + Math.sin(i * 1.7 + yk * 9) * h * 0.04; i ? ctx.lineTo(x, yy) : ctx.moveTo(x, yy); });
-      ctx.stroke();
+    // one cane piece: dark outline, body, a light vein along the lit side
+    const cane = (ph, s0, s1, col, vein) => {
+      if (!(s1 - s0 > th * 0.1)) return;
+      path(ph, s0, s1); ctx.lineWidth = caneW + ol * 2; ctx.strokeStyle = B.edge; ctx.stroke();
+      path(ph, s0, s1); ctx.lineWidth = caneW; ctx.strokeStyle = col; ctx.stroke();
+      if (vein && !charK) { ctx.save(); ctx.translate(light[0] * caneW * 0.2, light[1] * caneW * 0.2); path(ph, s0 + th * 0.2, s1 - th * 0.2); ctx.lineWidth = caneW * 0.24; ctx.strokeStyle = B.vein; ctx.globalAlpha *= 0.75; ctx.stroke(); ctx.restore(); }
+    };
+    // the two live spans, either side of the burnt-out middle
+    const U = o.u == null ? 1 : clamp(o.u, 0, 1), front = -half + 2 * half * U; // o.u < 1: a vine part-way across (it grows from the -x end)
+    const spans = U < 1 ? [[-half, front]] : gone > 0 ? [[-half, -gone], [gone, half]] : [[-half, half]];
+    // the flame's promise: with a burning egg about, the canes glow like tinder
+    if (o.hot && !burn) {
+      const a = 0.3 + 0.16 * Math.sin(tt * 5);
+      for (const ph of [0, Math.PI]) { path(ph, -half, front); ctx.lineWidth = caneW * 3.4; ctx.strokeStyle = `rgba(255,170,60,${a.toFixed(3)})`; ctx.stroke(); }
     }
-    for (const s of sp) {
-      const segs = Math.max(4, Math.round(h / (len / n * 0.5)));
-      const pts = [];
-      for (let k = 0; k <= segs; k++) { const y = (s.ln * k) / segs; pts.push([s.x0 + sway(s.x0, y) + Math.sin(k * 1.3 + s.ph) * len * 0.015, y]); }
-      for (const [w, col] of [[o * 3.6, '#2a0a12'], [o * 2.2, vineCol]]) {
+    // a vine about to close the gap pulses red
+    if (o.warn > 0.02 && front - -half > th * 0.3) {
+      const a = o.warn * (0.34 + 0.2 * Math.sin(tt * 14));
+      for (const ph of [0, Math.PI]) { path(ph, -half, front); ctx.lineWidth = caneW * 3.2; ctx.strokeStyle = `rgba(255,60,90,${a.toFixed(3)})`; ctx.stroke(); }
+    }
+    for (const [s0, s1] of spans) cane(Math.PI, s0, s1, backCol, false);
+    // big thorns, in the ring thorns' own look: out of the ring and into it, by turns
+    const nOut = Math.max(2, Math.round(len / (th * 1.7))), L = th * 1.8, Wd = th * 1.3;
+    const thorns = [];
+    for (let i = 0; i < nOut; i++) thorns.push([-len / 2 + (len * (i + 0.5)) / nOut, 1, i]);
+    for (let i = 1; i < nOut; i++) thorns.push([-len / 2 + (len * i) / nOut, -1, i + 9]);
+    for (const [s, side, key] of thorns) {
+      if (Math.abs(s) < gone + th * 0.15) continue; // burnt off
+      if (U < 1 && s > front - th * 0.35) continue; // the vine has not grown this far
+      const burnt = burn > 0 && Math.abs(s) < gone + th * 1.3;
+      const root = side * amp * 0.6, sw = L * (0.07 * Math.sin(tt * 1.6 + key * 1.9));
+      const [x0, y0] = P(s - Wd / 2, root), [x1, y1] = P(s + Wd / 2, root), [bx, by] = P(s, root);
+      const [tx0, ty0] = P(s, root + side * L), dx = (x1 - x0) / Wd, dy = (y1 - y0) / Wd;
+      const hook = side * L * 0.16, x2 = tx0 + dx * (hook + sw), y2 = ty0 + dy * (hook + sw);
+      const mx = (bx + x2) / 2, my = (by + y2) / 2;
+      const shape = () => {
         ctx.beginPath();
-        pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
-        ctx.lineWidth = w;
-        ctx.strokeStyle = col;
-        ctx.stroke();
-      }
-      // thorns alternate sides
-      const tl = Math.max(3, Math.min(len / n * 0.4, h * 0.14));
-      for (let k = 1; k < segs; k++) {
-        const [x, y] = pts[k], d = k % 2 ? 1 : -1;
-        ctx.beginPath();
-        ctx.moveTo(x, y - tl * 0.3);
-        ctx.lineTo(x + d * tl, y + tl * 0.5);
-        ctx.lineTo(x, y + tl * 0.35);
+        ctx.moveTo(x0, y0);
+        ctx.quadraticCurveTo(mx - dx * Wd * 0.2, my - dy * Wd * 0.2, x2, y2);
+        ctx.quadraticCurveTo(mx + dx * Wd * 0.3, my + dy * Wd * 0.3, x1, y1);
         ctx.closePath();
-        ctx.fillStyle = charred ? `rgb(${Math.round(240 - 150 * burn)},${Math.round(56 - 30 * burn)},${Math.round(79 - 40 * burn)})` : '#f04058';
-        ctx.fill();
-        ctx.lineWidth = o * 0.8;
-        ctx.strokeStyle = '#2a0a12';
-        ctx.stroke();
-      }
-      // sharp tip
-      const [ex, ey] = pts[segs];
-      ctx.beginPath();
-      ctx.moveTo(ex - tl * 0.35, ey - tl * 0.2);
-      ctx.lineTo(ex, ey + tl * 0.9);
-      ctx.lineTo(ex + tl * 0.35, ey - tl * 0.2);
-      ctx.closePath();
-      ctx.fillStyle = charred ? '#5a2030' : '#f04058';
-      ctx.fill();
-      ctx.stroke();
-      // fire eating the strand from below
-      if (burn > 0 && burn < 1) {
-        const fh = (4 + 8 * hash(s.ph)) * (0.8 + 0.4 * Math.sin(t * 13 + s.ph)) + h * 0.05;
-        for (const [sc, col] of [[1, '#ff5a1a'], [0.65, '#ffb42a'], [0.3, '#fff2a0']]) {
-          ctx.beginPath();
-          ctx.moveTo(ex - 3 * sc - 1, ey + 1);
-          ctx.quadraticCurveTo(ex - 3 * sc, ey - fh * sc * 0.5, ex + Math.sin(t * 9 + s.ph) * 1.5, ey - fh * sc);
-          ctx.quadraticCurveTo(ex + 3 * sc, ey - fh * sc * 0.5, ex + 3 * sc + 1, ey + 1);
-          ctx.closePath();
-          ctx.fillStyle = col;
-          ctx.fill();
+      };
+      ctx.lineJoin = 'miter';
+      ctx.miterLimit = 8;
+      shape();
+      if (!burnt) { ctx.lineWidth = lw(5.2, th * 0.5); ctx.strokeStyle = B.rim; ctx.stroke(); }
+      ctx.lineWidth = lw(2.6, th * 0.25); ctx.strokeStyle = B.thEdge; ctx.stroke();
+      ctx.fillStyle = burnt ? B.charTh : B.th; ctx.fill();
+      if (!burnt) {
+        // two facets meeting on a ridge from the root to the point; the one facing the light is lit
+        const litFirst = -dx * light[0] - dy * light[1] > 0;
+        ctx.save();
+        ctx.clip();
+        for (const q of [0, 1]) {
+          const ex = q ? x1 : x0, ey = q ? y1 : y0;
+          ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(ex + (ex - bx) * 0.8, ey + (ey - by) * 0.8); ctx.lineTo(x2 + (ex - bx) * 0.9 + (x2 - bx) * 0.3, y2 + (ey - by) * 0.9 + (y2 - by) * 0.3); ctx.lineTo(x2 + (x2 - bx) * 0.3, y2 + (y2 - by) * 0.3); ctx.closePath();
+          ctx.fillStyle = (q ? !litFirst : litFirst) ? B.thLit : B.thShade; ctx.fill();
         }
+        ctx.restore();
+        if (!o.calm) {
+          const tw = ((tt * 0.45 + ((key * 0.618) % 1) + 1) % 1) * 9; // each point twinkles now and then, like the ring thorns
+          if (tw < 1) {
+            const g = Math.sin(Math.PI * tw) * th * 0.5;
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.moveTo(x2 - g, y2); ctx.quadraticCurveTo(x2, y2, x2, y2 + g); ctx.quadraticCurveTo(x2, y2, x2 + g, y2); ctx.quadraticCurveTo(x2, y2, x2, y2 - g); ctx.quadraticCurveTo(x2, y2, x2 - g, y2);
+            ctx.fill();
+          }
+        }
+      }
+      ctx.lineJoin = 'round';
+    }
+    // the front cane, then the back one again where the braid brings it over
+    for (const [s0, s1] of spans) cane(0, s0, s1, caneCol, true);
+    for (let j = -3; j <= 3; j++) {
+      if (!(j & 1)) continue;
+      const c0 = (j * Math.PI - rock) / wn, c1 = ((j + 1) * Math.PI - rock) / wn;
+      for (const [s0, s1] of spans) { const a0 = Math.max(s0, c0 + th * 0.12), a1 = Math.min(s1, c1 - th * 0.12); if (a1 > a0) cane(Math.PI, a0, a1, backCol, false); }
+    }
+    // leaves by the roots: it is a plant, so fire is the answer
+    const leafK = 1 - Math.min(1, burn * 2.5);
+    if (leafK > 0.05) {
+      for (const [s, side, key] of [[-half * 0.8, 1, 1], [half * 0.8, -1, 2]]) {
+        if (U < 1 && s > front - th * 0.3) continue;
+        const [x, y] = P(s, side * amp * 0.5), [x1, y1] = P(s + th * 0.6, side * amp * 0.5), ang = Math.atan2(y1 - y, x1 - x) + side * (0.95 + 0.14 * Math.sin(tt * 2 + key * 2.3));
+        const ll = th * 1.25 * leafK;
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(ang);
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(ll * 0.45, -ll * 0.48, ll, 0); ctx.quadraticCurveTo(ll * 0.45, ll * 0.48, 0, 0); ctx.closePath();
+        ctx.lineWidth = lw(2, th * 0.22); ctx.strokeStyle = B.edge; ctx.stroke();
+        ctx.fillStyle = B.leaf; ctx.fill();
+        ctx.beginPath(); ctx.moveTo(ll * 0.12, 0); ctx.quadraticCurveTo(ll * 0.5, -ll * 0.3, ll * 0.86, -ll * 0.02); ctx.lineTo(ll * 0.12, 0); ctx.closePath();
+        ctx.fillStyle = B.leafLit; ctx.fill();
+        ctx.restore();
+      }
+    }
+    // the canes are tied round both ring ends: two turns of vine
+    for (const side of [-1, 1]) for (const q of [0, 1]) {
+      if (side > 0 && U < 1) continue; // a growing vine is only tied on at its root
+      const s0 = side * (len / 2 + th * (0.1 + q * 0.55)), [x, y] = P(s0, 0), [xa, ya] = P(s0 + th, 0), ang = Math.atan2(ya - y, xa - x);
+      ctx.beginPath(); ctx.ellipse(x, y, th * 0.24, th * 0.78, ang, 0, Math.PI * 2);
+      ctx.lineWidth = caneW * 0.6 + ol * 2; ctx.strokeStyle = B.edge; ctx.stroke();
+      ctx.lineWidth = caneW * 0.6; ctx.strokeStyle = q ? backCol : caneCol; ctx.stroke();
+    }
+    // the burning ends: a hot ember on each cane tip. The flames themselves are the game's own fire (main.js feeds
+    // G.fx.flameAt at curtainFronts), so a burning curtain burns exactly like a flame egg does.
+    if (burn > 0 && burn < 1) {
+      for (const side of [-1, 1]) for (const ph of [0, Math.PI]) {
+        const s = side * gone, [ex, ey] = P(s, dAt(s, ph)), pl = 0.75 + 0.25 * Math.sin(tt * 17 + ph + side);
+        ctx.beginPath(); ctx.arc(ex, ey, caneW * 0.62, 0, Math.PI * 2); ctx.fillStyle = '#ff7a1a'; ctx.fill();
+        ctx.beginPath(); ctx.arc(ex, ey, caneW * 0.36 * pl, 0, Math.PI * 2); ctx.fillStyle = '#ffe27a'; ctx.fill();
+      }
+    }
+    // a vine's tip: a curled bud that pulses (red as it is about to close), or an ember while it burns back
+    if (U < 1 && front - -half > th * 0.2) {
+      const [bx, by] = P(front, dAt(front, 0));
+      if (o.ember) {
+        const pl = 0.75 + 0.25 * Math.sin(tt * 17);
+        ctx.beginPath(); ctx.arc(bx, by, caneW * 0.62, 0, Math.PI * 2); ctx.fillStyle = '#ff7a1a'; ctx.fill();
+        ctx.beginPath(); ctx.arc(bx, by, caneW * 0.36 * pl, 0, Math.PI * 2); ctx.fillStyle = '#ffe27a'; ctx.fill();
+      } else {
+        const w = o.warn || 0, pr = th * (0.5 + 0.08 * Math.sin(tt * (6 + 8 * w))) * (1 + 0.3 * w);
+        ctx.beginPath(); ctx.arc(bx, by, pr, 0, Math.PI * 2);
+        ctx.fillStyle = w > 0 ? `rgb(${Math.round(142 + 113 * w)},${Math.round(216 - 150 * w)},${Math.round(90 - 20 * w)})` : '#8ed85a'; ctx.fill();
+        ctx.lineWidth = ol; ctx.strokeStyle = B.edge; ctx.stroke();
+        ctx.beginPath(); ctx.arc(bx + pr * 0.3, by - pr * 0.25, pr * 0.5, Math.PI * 0.2, Math.PI * 1.6); ctx.stroke();
       }
     }
   });
@@ -1363,118 +1463,3 @@ export function drawOneWayMark(ctx, cx, cy, size, dir = 1, t = 0) {
 // (thicker, thorns bristling, a knot anchors it on the far side), burn 0..1 chars it from the tip back.
 // Local px space: x along the ring, y across it (thick = ring thickness in px). The growing tip pulses so the
 // player reads "it is coming"; the last 25 % of the way it turns redder (warning).
-export function drawThornVine(ctx, len, thick, u, t = 0, sealed = false, burn = 0, look = null) {
-  // A bramble sleeve: two thick stems braid across the gap, covered in big hooked thorns. It is drawn bigger than the
-  // ring band (about 2.4x its thickness) so it reads at phone size as a living wall, not a twig.
-  if (!(len > 0) || (!sealed && !(u > 0.01))) return;
-  safe(ctx, () => {
-    burn = clamp(burn || 0, 0, 1);
-    u = sealed ? 1 : clamp(u, 0, 1);
-    const o = lw(1, thick * 0.06), x0 = -len / 2 - thick * 0.3, reach = (len + thick * 0.6) * u * (1 - burn * 0.85);
-    const warn = sealed ? 0 : clamp((u - 0.7) / 0.3, 0, 1);
-    const stemW = thick * (sealed ? 0.62 : 0.46 + 0.14 * u);
-    const N = Math.max(4, Math.round(reach / (thick * 0.36)));
-    const braid = thick * (sealed ? 0.42 : 0.3 + 0.1 * u);
-    const strands = [0, Math.PI].map((ph) => {
-      const P = [];
-      for (let i = 0; i <= N; i++) {
-        const x = x0 + (reach * i) / N, f = i / N, env = Math.sin(Math.PI * Math.min(1, 0.15 + f * 0.95));
-        const wave = sealed ? 0.05 * Math.sin(t * 1.5 + i) : 0.12 * Math.sin(x * 0.11 - t * 3.2);
-        P.push([x, env * (braid * Math.sin((x / thick) * 1.9 + ph) + thick * wave)]);
-      }
-      return P;
-    });
-    const line = (P) => { ctx.beginPath(); P.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); };
-    const stem = burn > 0 ? `rgb(${Math.round(110 - 60 * burn)},${Math.round(36 - 20 * burn)},${Math.round(52 - 30 * burn)})` : '#8a2a4a';
-    const stemDark = '#1c040c';
-    // warning glow: pulses as it is about to seal; sealed, it glows steadily
-    const glow = sealed ? 0.4 : warn * (0.4 + 0.3 * Math.sin(t * 14));
-    if (glow > 0.02 && burn === 0) {
-      for (const P of strands) { line(P); ctx.lineWidth = stemW * 3.2; ctx.lineCap = 'round'; ctx.strokeStyle = `rgba(255,60,90,${glow * 0.6})`; ctx.stroke(); }
-    }
-    // root knots on the near edge (and the far one once sealed)
-    const knot = (x) => { ctx.beginPath(); ctx.ellipse(x, 0, thick * 0.42, thick * 0.6, 0, 0, Math.PI * 2); ctx.fillStyle = '#5a3a1c'; ctx.fill(); ctx.lineWidth = o * 1.3; ctx.strokeStyle = stemDark; ctx.stroke(); };
-    knot(x0);
-    // stems: outline, body, light vein; the back strand is drawn a shade darker so the braid reads
-    strands.forEach((P, si) => {
-      for (const [w, col] of [[stemW + o * 2.6, stemDark], [stemW, si ? stem : '#6e1f3a'], [stemW * 0.24, 'rgba(255,175,200,0.5)']]) {
-        line(P); ctx.lineWidth = w; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = col; ctx.stroke();
-      }
-    });
-    // big hooked thorns, pointing out of the braid both ways; leaves on a growing vine
-    const tf = look?.fill && look.tip ? look.fill : '#ff3b55', tt = look?.tip || '#ff3b55', te = look?.edge || '#2a0a12';
-    strands.forEach((P, si) => {
-      for (let i = 1; i < N; i++) {
-        const [x, y] = P[i], d = (i + si) % 2 ? 1 : -1, s = thick * (sealed ? 0.85 : 0.55 + 0.25 * warn) * (0.8 + 0.4 * hash(i + si * 7));
-        if (hash(i * 3.1 + si) < 0.16 && !sealed) {
-          ctx.save();
-          ctx.translate(x, y + d * stemW * 0.4);
-          ctx.rotate(d * (0.6 + 0.2 * Math.sin(t * 2 + i)));
-          ctx.beginPath();
-          ctx.ellipse(s * 0.7, 0, s * 0.8, s * 0.34, 0, 0, Math.PI * 2);
-          ctx.fillStyle = burn > 0 ? '#4a3a20' : '#5fae3a';
-          ctx.fill();
-          ctx.lineWidth = o * 0.8;
-          ctx.strokeStyle = stemDark;
-          ctx.stroke();
-          ctx.restore();
-          continue;
-        }
-        const by = y + d * stemW * 0.4, hx = x + s * 0.35;
-        ctx.beginPath();
-        ctx.moveTo(x - s * 0.32, by);
-        ctx.quadraticCurveTo(x - s * 0.05, by + d * s * 0.6, hx, by + d * s); // hooked
-        ctx.lineTo(x + s * 0.3, by);
-        ctx.closePath();
-        ctx.fillStyle = burn > 0 ? '#5a2030' : tf;
-        ctx.fill();
-        if (tt !== tf && burn === 0) {
-          ctx.beginPath();
-          ctx.moveTo(x + s * 0.05, by + d * s * 0.55);
-          ctx.lineTo(hx, by + d * s);
-          ctx.lineTo(x + s * 0.22, by + d * s * 0.5);
-          ctx.closePath();
-          ctx.fillStyle = tt;
-          ctx.fill();
-        }
-        ctx.beginPath();
-        ctx.moveTo(x - s * 0.32, by);
-        ctx.quadraticCurveTo(x - s * 0.05, by + d * s * 0.6, hx, by + d * s);
-        ctx.lineTo(x + s * 0.3, by);
-        ctx.lineWidth = o * 0.9;
-        ctx.strokeStyle = te;
-        ctx.stroke();
-      }
-    });
-    const [tx, ty] = strands[0][N];
-    if (sealed && burn < 0.05) knot(tx);
-    else if (!sealed && burn === 0) {
-      // the growing tip: a curled bud that pulses, red when it is about to close
-      const pr = thick * (0.26 + 0.06 * Math.sin(t * (6 + 8 * warn))) * (1 + 0.4 * warn);
-      ctx.beginPath();
-      ctx.arc(tx, ty, pr, 0, Math.PI * 2);
-      ctx.fillStyle = warn > 0 ? `rgb(${Math.round(120 + 135 * warn)},${Math.round(170 - 130 * warn)},60)` : '#8ed85a';
-      ctx.fill();
-      ctx.lineWidth = o;
-      ctx.strokeStyle = stemDark;
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.arc(tx + pr * 0.4, ty - pr * 0.3, pr * 0.55, Math.PI * 0.2, Math.PI * 1.6);
-      ctx.stroke();
-    }
-    // fire eating it from the tip back
-    if (burn > 0 && burn < 1) {
-      const fx = strands[0][Math.max(0, Math.round(N * (1 - burn * 0.2)))][0];
-      for (const [sc, col] of [[1.4, '#ff5a1a'], [0.9, '#ffb42a'], [0.45, '#fff2a0']]) {
-        const fh = thick * (1.1 + 0.3 * Math.sin(t * 13)) * sc;
-        ctx.beginPath();
-        ctx.moveTo(fx - thick * 0.35 * sc, thick * 0.3);
-        ctx.quadraticCurveTo(fx - thick * 0.35 * sc, -fh * 0.5, fx + Math.sin(t * 9) * 2, -fh);
-        ctx.quadraticCurveTo(fx + thick * 0.35 * sc, -fh * 0.5, fx + thick * 0.35 * sc, thick * 0.3);
-        ctx.closePath();
-        ctx.fillStyle = col;
-        ctx.fill();
-      }
-    }
-  });
-}

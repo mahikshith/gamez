@@ -145,17 +145,28 @@ export function drawGator(ctx, s, t = 0, o = {}) {
     // nostril
     { const [nx, ny] = jawRot(47, G_TOP0(47) - 1.5), [X, Y] = M(nx, ny); ctx.beginPath(); ctx.ellipse(X, Y, 1.1, 0.75, -0.3, 0, TAU); ctx.fillStyle = C.line; ctx.fill(); }
     // ---- the eye in its raised socket
-    const big = o.baby ? 1.25 : 1, [ex0, ey0] = jawRot(27.3, G_TOP0(27.3) - 3.1), [EX, EY] = M(ex0, ey0), er = 3.3 * big * (pres ? 1.28 : 1);
+    const wake = o.boss ? 0 : clamp(o.wake || 0, 0, 1); // faces3: the eyes snap open as the log wakes (a 0.6 s take)
+    const big = (o.baby ? 1.25 : 1) * (o.boss ? 1 : 1.62) * (1 + 0.28 * wake), [ex0, ey0] = jawRot(27.3, G_TOP0(27.3) - 3.1 - (o.boss ? 0 : 1.6)), [EX, EY] = M(ex0, ey0), er = 3.3 * big * (pres ? 1.28 : 1); // 0.8.18: a level gator's eye 1.4x (it read as a dot in play); faces3: 1.62x with a white
     ctx.save(); ctx.translate(EX, EY); ctx.rotate(-jaw * 0.8);
     if (eyeMode === 'spiral') { ctx.beginPath(); ctx.arc(0, 0, er, 0, TAU); ctx.fillStyle = '#fff6d8'; ctx.fill(); ink(lw * 0.7); spiralEye(ctx, 0, 0, er, t, 1, C.line); }
     else {
-      const bl = blinkAt(t, id * 3 + 1), lid = eyeMode === 'half' ? 0.55 : o.boss ? 0.36 : jawU > 0.2 ? 0.06 : 0.24;
-      eye(ctx, 0, 0, { r: er, iris: C.eye, irisLo: C.eyeLo, pupil: 'slit', wide: jawU > 0.3, look: { x: o.look ?? 0.4, y: 0.1 }, lid: Math.max(lid, bl), lidCol: C.base, line: C.line, lw: lw * 0.75, shut: eyeMode === 'shut' ? 1 : eyeMode === 'squint' ? 'squint' : 0, mad: jawU > 0.2 || o.boss ? 0.28 : 0.1 });
-      // brow ridge: a heavy lid line that scowls
-      ctx.beginPath(); ctx.moveTo(-er * 1.25, -er * 0.5); ctx.quadraticCurveTo(-er * 0.2, -er * 1.45, er * 1.3, -er * 0.35);
-      if (o.boss) { ctx.lineWidth = 2.4 + lw * 1.5; ctx.strokeStyle = C.line; ctx.stroke(); ctx.lineWidth = 2.4; ctx.strokeStyle = C.brow; ctx.stroke(); } else ink(lw * 1.1);
+      const bl = blinkAt(t, id * 3 + 1), smug = o.smug || 0, lid = eyeMode === 'half' ? 0.55 : o.boss ? 0.36 : jawU > 0.2 ? 0.06 : lerp(0.24, 0.5, smug);
+      const lk = { x: clamp((o.look ?? 0.4) - 0.9 * (o.miss || 0), -1.3, 1.3), y: clamp((o.lookY ?? 0.1) - 0.25 * smug - 0.9 * (o.miss || 0), -1.2, 1.2) };
+      eye(ctx, 0, 0, { r: er, iris: C.eye, irisLo: C.eyeLo, pupil: 'slit', wide: jawU > 0.3 || wake > 0.3, look: lk, lid: wake > 0.2 ? 0 : Math.max(lid, bl), lidCol: C.base, line: C.line, lw: lw * 0.75, shut: eyeMode === 'shut' ? 1 : eyeMode === 'squint' ? 'squint' : 0, mad: jawU > 0.2 || o.boss ? 0.28 : 0.1 + 0.15 * smug,
+        ...(o.boss ? {} : { white: '#fffbe6', irisR: 0.7 - 0.12 * wake }) }); // faces3: a white round the iris, so where it looks reads in play
+      if (!o.boss && eyeMode !== 'shut' && eyeMode !== 'squint') { ctx.beginPath(); ctx.arc(-er * 0.3, -er * 0.35, er * 0.2, 0, TAU); ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.fill(); } // a glint: a live eye
+      // brow ridge: a heavy lid line that acts: down at the snout for the snap, raised in a hurt or a daze, a slow smug tilt after a bite
+      const bro = o.boss ? 0 : eyeMode === 'squint' ? -0.7 : clamp(0.15 + 0.9 * ss(0.05, 0.5, jawU) + 0.5 * smug - 1.1 * (o.miss || 0) - 1.2 * wake, -1, 1);
+      ctx.beginPath(); ctx.moveTo(-er * 1.25, -er * (0.5 + 0.35 * Math.max(0, -bro))); ctx.quadraticCurveTo(-er * 0.2, -er * (1.45 - 0.25 * bro), er * 1.3, -er * (0.35 - 0.45 * bro));
+      if (o.boss) { ctx.lineWidth = 2.4 + lw * 1.5; ctx.strokeStyle = C.line; ctx.stroke(); ctx.lineWidth = 2.4; ctx.strokeStyle = C.brow; ctx.stroke(); } else ink(lw * 1.6);
+      // faces3: the wake take: snap lines off the eye; a "?" over a puzzled miss
+      if (wake > 0.05) burst(ctx, 0, 0, er * 1.35, er * (1.75 + 0.5 * wake), -Math.PI * 0.95, -Math.PI * 0.25, 3, lw * 0.9 * wake + 0.3, '#fff6d0', C.line);
+      const mq = o.boss ? 0 : clamp((o.miss || 0) * 1.6, 0, 1);
+      if (mq > 0.05) { ctx.save(); ctx.translate(er * 0.4, -er * 2.6 - 2 * mq); ctx.rotate(jaw * 0.8 + 0.15); ctx.globalAlpha *= mq; ctx.font = `900 ${(er * 2.3).toFixed(1)}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round'; ctx.lineWidth = lw * 1.6; ctx.strokeStyle = C.line; ctx.strokeText('?', 0, 0); ctx.fillStyle = '#fff6d0'; ctx.fillText('?', 0, 0); ctx.restore(); }
     }
     ctx.restore();
+    // faces3: the smirk after a bite: the corner of the mouth curls up at the hinge
+    if (!o.boss && (o.smug || 0) > 0.05 && jawU < 0.3) { const [X, Y] = M(22.5, G_MOUTH(22.5)), q = o.smug; ctx.beginPath(); ctx.moveTo(X + 3, Y + 0.6); ctx.quadraticCurveTo(X - 0.5, Y + 1.2, X - 1.8, Y - 2.6 * q); ctx.lineCap = 'round'; ink(lw * 1.1); }
     // ---- Grandpa: moss on his back, the lily pad hat with its flower
     if (o.boss) {
       for (const [x, r] of [[-22, 3], [-7, 3.6], [8, 2.8]]) { const y = G_TOP0(x) + 0.6; pts(range(x - r * 1.7, x + r * 1.7, (q) => y + Math.max(0, r * Math.cos(((q - x) / (r * 1.7)) * Math.PI / 2)) * 1.0, 0.8)); ctx.fillStyle = C.moss; ctx.fill(); ink(lw * 0.7); const [X, Y] = M(x + r * 0.4, y + r * 0.3); ctx.fillStyle = C.mossLo; ctx.beginPath(); ctx.ellipse(X, Y, r * 0.7, r * 0.25, 0, 0, TAU); ctx.fill(); }
@@ -238,7 +249,7 @@ export function drawTurtle(ctx, s, t = 0, o = {}) {
     ctx.fillStyle = 'rgba(0,0,0,0.26)'; ctx.beginPath(); ctx.ellipse(-2, 0.4, 40 - 8 * Math.sin(flip * Math.PI), 2.4, 0, 0, TAU); ctx.fill();
     // the tumble: it rolls over its tail in profile with a little hop, then rocks on its dome
     if (flip > 0) { const e = flip * flip * (3 - 2 * flip); ctx.translate(-6 * Math.sin(e * Math.PI), -16 - Math.sin(e * Math.PI) * 13); ctx.rotate(-Math.PI * e + (onBack ? Math.sin(t * 5.5) * 0.09 * flail * flip : 0)); ctx.translate(0, 16); }
-    else ctx.translate(0, -walk * Math.abs(Math.sin(g)) * 0.7 - (head > 0.3 ? 0 : 0)); // a slow rolling crawl
+    else { ctx.translate(0, -walk * Math.abs(Math.sin(g)) * 0.7); const br = (o.breathe || 0) * Math.sin(t * 2.3); ctx.scale(1 - br * 0.01, 1 + br * 0.04); } // a slow rolling crawl; breathing when still
     const leg = (hipX, ph, far, hind) => {
       const c = (((g + ph) / TAU) % 1 + 1) % 1, st = 0.66, stride = 7 * walk;
       let fx, lift = 0;
@@ -267,23 +278,23 @@ export function drawTurtle(ctx, s, t = 0, o = {}) {
     const hx = 39 + head * 8.5 - tuck * 18, hy = 13.5 + (head < 0 ? -head * 2.2 : 0) - tuck * 1.5 + (onBack ? Math.sin(t * 7) * 1.2 * flail : 0), tilt = (head < 0 ? head * 0.22 : head * 0.06) - (onBack ? 0.25 : 0);
     limb(ctx, [[24, -11], [(24 + hx) / 2 - 2, -(hy - 3 + head * 1.5)], [hx - 5, -(hy - 1)]], [6, 5.4, 5.6], C.skin, C.line, lw * 0.9);
     ctx.strokeStyle = C.skinLo; ctx.lineWidth = 1; for (let i = 1; i <= 2; i++) { const f = i / 3, x = lerp(26, hx - 7, f); if (hx - 7 > 30) { ctx.beginPath(); ctx.moveTo(x, -(hy - 5)); ctx.quadraticCurveTo(x + 1.6, -(hy - 1), x, -(hy + 2.5)); ctx.stroke(); } }
-    ctx.save(); ctx.translate(hx, -hy); ctx.rotate(tilt);
+    ctx.save(); ctx.translate(hx, -hy); ctx.rotate(tilt); ctx.scale(1.22, 1.22); // a bigger head on the same shell: the face must read at phone size
     // lower jaw (drops open), mouth, then the skull with its hooked beak
-    const mo = mouth * 0.55;
+    const mo = mouth * 0.78;
     ctx.save(); ctx.translate(-3, 2.5); ctx.rotate(mo);
     ctx.beginPath(); spline(ctx, [[-2, -1.5], [6, -1.2], [13.5, -0.4], [14.2, 1.2], [8, 4.6], [-1, 5.6], [-4.5, 2]], true); ctx.fillStyle = C.skinLo; ctx.fill(); ink(lw * 0.85);
     ctx.beginPath(); ctx.moveTo(8, -1.3); ctx.lineTo(14.4, -0.6); ctx.lineTo(13.6, 1.8); ctx.lineTo(9.5, 2.4); ctx.closePath(); ctx.fillStyle = C.beak; ctx.fill(); ink(lw * 0.6);
     ctx.restore();
-    if (mouth > 0.08) { ctx.beginPath(); ctx.moveTo(-3, 2.2); ctx.lineTo(11, 0.6); ctx.lineTo(-3 + 14 * Math.cos(mo), 2.5 + 14 * Math.sin(mo) - 1.4); ctx.closePath(); ctx.fillStyle = C.mouth; ctx.fill(); }
+    if (mouth > 0.08) { ctx.beginPath(); ctx.moveTo(-3, 2.2); ctx.lineTo(11, 0.6); ctx.lineTo(-3 + 14 * Math.cos(mo), 2.5 + 14 * Math.sin(mo) - 1.4); ctx.closePath(); ctx.fillStyle = mouth > 0.4 ? '#d8343c' : C.mouth; ctx.fill(); }
     const skull = () => { ctx.beginPath(); spline(ctx, [[-9.5, -1], [-7.5, -7], [-1, -9.6], [6, -8], [11, -4.2], [15.2, 1.4], [14.4, 3.6], [11, 1.2], [4, 2.2], [-4, 3.2], [-9, 2.6]], true, 0.5); };
     form(ctx, skull, { d: 2.2, lo: C.skinLo, base: C.skin, hi: C.skinHi, hiK: 0.5, line: C.line, lw, noWeight: true, inner: () => {
       ctx.beginPath(); ctx.moveTo(7.5, -9); ctx.lineTo(18, -6); ctx.lineTo(18, 6); ctx.lineTo(6.5, 6); ctx.quadraticCurveTo(10, -1, 7.5, -9); ctx.fillStyle = C.beak; ctx.fill();
       ctx.beginPath(); ctx.moveTo(9, -6.6); ctx.quadraticCurveTo(12.5, -3.4, 14, 0); ctx.lineWidth = 1.3; ctx.strokeStyle = C.beakHi; ctx.stroke();
     } });
     ctx.beginPath(); ctx.arc(11.6, -3.4, 0.6, 0, TAU); ctx.fillStyle = C.line; ctx.fill(); // nostril
-    if (o.eye === 'spiral') { ctx.beginPath(); ctx.arc(2.6, -3.6, 3, 0, TAU); ctx.fillStyle = '#fff6d8'; ctx.fill(); ink(lw * 0.7); spiralEye(ctx, 2.6, -3.6, 3, t, 1, C.line); }
-    else eye(ctx, 2.6, -3.6, { r: 3, iris: C.eye, irisLo: C.eyeLo, pupil: 'round', pupilR: 0.36, look: { x: 0.5, y: 0.1 }, lid: Math.max(o.glare ? 0.3 : 0.16, blinkAt(t, 7)), mad: o.glare ? 0.42 : 0.12, lidCol: C.skin, line: C.line, lw: lw * 0.7, shut: o.eye === 'shut' ? 1 : 0 });
-    if (o.glare) { ctx.beginPath(); ctx.moveTo(-1.6, -8); ctx.lineTo(6.4, -5.4); ink(lw * 1.2); }
+    if (o.eye === 'spiral') { ctx.beginPath(); ctx.arc(2.6, -3.9, 4.6, 0, TAU); ctx.fillStyle = '#fff6d8'; ctx.fill(); ink(lw * 0.7); spiralEye(ctx, 2.6, -3.9, 4.2, t, 1, C.line); }
+    else eye(ctx, 2.6, -3.9, { r: 4.6, white: '#fff6d8', irisR: 0.66, iris: C.eye, irisLo: C.eyeLo, pupil: 'round', pupilR: 0.36, look: { x: o.lookX ?? 0.5, y: 0.1 }, lid: Math.max(o.glare ? 0.3 : 0.16, blinkAt(t, 7)), mad: o.glare ? 0.42 : 0.12, lidCol: C.skin, line: C.line, lw: lw * 0.7, shut: o.eye === 'shut' ? 1 : 0 });
+    { const g = o.glare ? 1 : o.eye === 'spiral' ? -1 : 0.25; ctx.beginPath(); ctx.moveTo(-2.4, -9.6 + g * 0.6); ctx.lineTo(7.4, -9.6 + g * 3); ink(lw * 1.5); } // a heavy brow: a scowl when it means it
     ctx.restore();
     // plastron (belly plate): on its back this is what faces up
     const plast = () => { S([[-33, 8], [-30, 3.4], [0, 2.2], [27, 3.4], [30, 8], [0, 9.5]]); };
@@ -389,6 +400,31 @@ const want = (C) => (C.frz > 0 ? { k: 'ice', left: C.frz } : C.stn > 0 || C.zap 
 // regular gators and babies are drawn this much bigger than their sim body (the collider, jaw point and reach are unchanged);
 // Grandpa Gator already fills his channel.
 const GATOR_DRAW = 1.22;
+// 0.8.15 Bait and switch in the level: a creature that is after the decoy (C.lu) is smitten. Hearts rise off its head, a drop
+// of drool hangs from its jaw. World space, (x, y) = over its head.
+function luredHearts(ctx, x, y, k, t, seed) {
+  ctx.save();
+  for (let i = 0; i < 3; i++) {
+    const u = (t * 0.7 + i / 3 + seed * 0.21) % 1, hx = x + Math.sin(u * 5 + i * 2) * 0.12, hy = y + 0.1 + u * 0.55, r = Math.max(4.5 / k, 0.085) * (0.6 + 0.6 * Math.min(1, u * 4));
+    ctx.globalAlpha = Math.min(1, u * 5) * (1 - Math.max(0, (u - 0.7) / 0.3));
+    ctx.beginPath(); ctx.moveTo(hx, hy - r * 0.9); ctx.bezierCurveTo(hx - r * 1.6, hy + r * 0.2, hx - r * 0.7, hy + r * 1.3, hx, hy + r * 0.45); ctx.bezierCurveTo(hx + r * 0.7, hy + r * 1.3, hx + r * 1.6, hy + r * 0.2, hx, hy - r * 0.9); ctx.closePath();
+    ctx.fillStyle = '#ff5c8a'; ctx.fill(); ctx.strokeStyle = '#5a0f2a'; ctx.lineWidth = Math.max(1.2 / k, 0.02); ctx.stroke();
+    ctx.beginPath(); ctx.arc(hx - r * 0.45, hy + r * 0.5, r * 0.2, 0, TAU); ctx.fillStyle = '#ffd0de'; ctx.fill();
+  }
+  ctx.restore();
+}
+function drool(ctx, x, y, k, t) {
+  const u = (t * 0.9) % 1, s = Math.max(3.2 / k, 0.06) * (0.6 + 0.5 * Math.min(1, u * 2)), dy = -u * u * 0.28;
+  ctx.save(); ctx.globalAlpha = 1 - Math.max(0, (u - 0.75) / 0.25);
+  ctx.beginPath(); ctx.moveTo(x, y + dy + s * 1.5); ctx.quadraticCurveTo(x + s, y + dy, x, y + dy - s * 0.6); ctx.quadraticCurveTo(x - s, y + dy, x, y + dy + s * 1.5);
+  ctx.fillStyle = '#bfe8ff'; ctx.fill(); ctx.strokeStyle = '#1d5d8a'; ctx.lineWidth = Math.max(1 / k, 0.015); ctx.stroke(); ctx.restore();
+}
+// swallowed by a Warp Gate (ph 'warp'): it spins small into the gate, and grows out of the exit on the far side
+const warpK = (C) => (C.ph === 'warp' ? Math.max(0.02, Math.abs(1 - (2 * C.t) / Math.max(0.01, C.dur))) : 1);
+// 0.8.15: so is the snapping turtle (it measured 2.7 egg heights long but only 0.84 high: a sliver on a phone). It grows about
+// a point 0.3 L ahead of its feet, so its beak still closes on the egg the sim holds at 0.62 L and its tail takes the rest.
+const TURTLE_DRAW = 1.25, TURTLE_PIV = 0.3;
+const turtleBig = (ctx, L) => { ctx.translate(TURTLE_PIV * L, 0); ctx.scale(TURTLE_DRAW, TURTLE_DRAW); ctx.translate(-TURTLE_PIV * L, 0); };
 export function drawBayou(ctx, sim, t, k) {
   if (!sim.gators) return;
   const B = sim.bx && sim.bx.boss;
@@ -400,6 +436,7 @@ export function drawBayou(ctx, sim, t, k) {
     if (G.ph === 'log') eye = G.next > 0.6 ? 'shut' : 'half';
     if (G.ph === 'warn') { jaw = ss(0, 0.6, G.t / G.dur); eye = 'open'; }
     if (G.ph === 'after') jaw = G.t < 0.1 ? 1 - G.t / 0.1 : 0;
+    let smug = 0, miss = 0; if (G.ph === 'after') { const q = clamp(G.t / Math.max(0.01, G.dur), 0, 1), env = ss(0.2, 0.45, q) * (1 - ss(0.85, 1, q)); if (SNAP[G.id] === 1) smug = env; else if (SNAP[G.id] === -1) miss = env; }
     if (G.ph === 'flee') eye = 'squint';
     if (G.ph === 'dizzy') { eye = 'spiral'; jaw = 0.3; }
     if (G.ph === 'hurt') { eye = 'squint'; jaw = 0.5; }
@@ -410,11 +447,19 @@ export function drawBayou(ctx, sim, t, k) {
     if (atk && atk.name === 'roll' && atk.ph === 'warn') { jaw = 0.9 * ss(0, 0.5, warnU); eye = 'open'; }
     const stun = st && (st.k === 'stun');
     if (stun) { eye = 'spiral'; jaw = 0.25; }
-    const o = { jaw, eye, tail, boss: G.boss, baby: G.call && !G.boss, gait: (A.g / 9 / (0.121 * GATOR.L * G.s)) * TAU, walk: clamp(A.sp / 0.07, 0, 1), chomp: G.ph === 'after' ? clamp(1 - G.t / 0.32, 0, 1) : 0, bend: rf * k, roll: G.roll > 0 ? 1 - G.roll / 0.9 : 0, sneeze: G.sneeze > 0 ? G.sneeze / 0.8 : 0, stars: G.ph === 'dizzy' || stun ? 1 : 0, alpha, id: G.id, look: 0.35, noZ: !!st };
+    // faces3: its eyes on the nearest egg (in its own frame: x along its facing, y down), the eyes snap open as a log wakes
+    let gLook = 0.35, lookY = 0.1;
+    if (!G.boss && eye === 'open') { const F = sim.byFrame(G); let bd = 9; for (const e of sim.eggs) { if (!e.alive || e.saved) continue; const p = e.body.getPosition(), dx = p.x - F.x, dy = p.y - F.y, d = Math.hypot(dx, dy); if (d < bd) { bd = d; const l = Math.max(0.5, d); gLook = clamp(((dx * F.tx + dy * F.ty) * (A.f >= 0 ? 1 : -1)) / l * 1.3, -1.3, 1.3); lookY = clamp(-(dx * F.nx + dy * F.ny) / l, -1, 1); } } }
+    if (WAKE.ph[G.id] === 'log' && G.ph !== 'log') WAKE.t[G.id] = t;
+    WAKE.ph[G.id] = G.ph;
+    const wk = t - (WAKE.t[G.id] ?? -9), wake = wk >= 0 && wk < 0.7 ? Math.sin(Math.min(1, wk / 0.08) * Math.PI / 2) * (1 - ss(0.35, 0.7, wk)) : 0;
+    const o = { jaw, eye, tail, smug, miss, wake, lookY, boss: G.boss, baby: G.call && !G.boss, gait: (A.g / 9 / (0.121 * GATOR.L * G.s)) * TAU, walk: clamp(A.sp / 0.07, 0, 1), chomp: G.ph === 'after' ? clamp(1 - G.t / 0.32, 0, 1) : 0, bend: rf * k, roll: G.roll > 0 ? 1 - G.roll / 0.9 : 0, sneeze: G.sneeze > 0 ? G.sneeze / 0.8 : 0, stars: G.ph === 'dizzy' || stun ? 1 : 0, alpha, id: G.id, look: gLook, noZ: !!st };
     // the telegraph: a red bite mark over the jaws while they open at an egg
     if (G.ph === 'warn') biteMark(ctx, sim.gJaw(G), t, k, ss(0, 1, G.t / G.dur), G.s);
+    if (G.lu && G.ph !== 'warp' && !st) { const J = sim.gJaw(G), F = sim.byFrame(G); luredHearts(ctx, J.x + F.nx * 0.25 - F.tx * G.face * 0.25, J.y + F.ny * 0.25 - F.ty * G.face * 0.25, k, t, G.id); drool(ctx, J.x + F.tx * G.face * 0.1 - F.nx * 0.2, J.y + F.ty * G.face * 0.1 - F.ny * 0.2, k, t + G.id); o.look = 0.9; if (o.eye !== 'spiral') o.eye = 'open'; if (!o.jaw) o.jaw = 0.18 + 0.05 * Math.sin(t * 5); }
     frame(ctx, G, rf + sink, k, () => {
       ctx.scale(A.f >= 0 ? 1 : -1, 1);
+      if (G.ph === 'warp') { const w = warpK(G); ctx.translate(0, -0.3 * k * (1 - w)); ctx.rotate((1 - w) * 5 * (G.t < G.dur / 2 ? 1 : -1)); ctx.scale(w, w); }
       if (Math.abs(A.f) < 0.999) ctx.scale(Math.max(0.15, Math.abs(A.f)), 1);
       const S = len * (G.boss ? 1 : GATOR_DRAW), box = { x0: -S * 0.66, y0: -S * 0.7, x1: S * 0.76, y1: S * 0.1 }; // drawn bigger than the collider, about its feet
       statusDraw(ctx, box, (c) => drawGator(c, S, st ? st.hold : t, o), st, { off: Math.max(1.1, S * 0.012), crys: Math.max(1, S / 90) });
@@ -424,8 +469,19 @@ export function drawBayou(ctx, sim, t, k) {
     const rf = sim.byFloor(T.ch), A = look('t' + T.id, sim, T.x, T.y, T.face, t), L = TURTLE.L * k, st = statusClock(sim, 'bt' + T.id, want(T), t);
     const flipU = T.ph === 'flip' ? ss(0, 0.25, T.t) : T.ph === 'right' ? 1 - ss(0, 1, T.t / T.dur) : 0;
     const o = { head: T.ph === 'warn' ? -0.9 : T.ph === 'clamp' ? 0.75 : 0, mouth: T.ph === 'warn' ? ss(0, 1, T.t / Math.max(0.01, T.dur)) : 0, gait: (A.g / 9 / (0.106 * TURTLE.L)) * TAU, walk: clamp(A.sp / 0.05, 0, 1), flip: flipU, flail: 1, shell: T.ph === 'shell' ? 1 - ss(0.75, 1, T.t / T.dur) : 0, eye: st && st.k === 'stun' ? 'spiral' : T.ph === 'flip' ? 'spiral' : undefined, glare: T.ph === 'warn' || T.ph === 'clamp', stars: (st && st.k === 'stun') || (T.ph === 'flip' && T.t > 0.3) ? 1 : 0 };
+    if (!st || st.k !== 'ice') { // render-only life: the head and jaw glide between poses (pull back fast, strike faster), and
+      // standing still it breathes, looks about and pokes its head out now and then, so it never sits like a sticker
+      const dtt = clamp(t - (A.ht ?? t), 0, 0.1), idle = T.ph === 'crawl' ? 1 - o.walk : 0; A.ht = t;
+      if (idle > 0) { o.head += idle * (0.16 * Math.sin(t * 0.7 + T.id * 2) + 0.5 * ss(0.5, 1, Math.sin(t * 0.37 + T.id))); o.breathe = idle; o.lookX = 0.65 * Math.tanh(3 * Math.sin(t * 0.45 + T.id * 1.7)); }
+      A.hd = A.hd == null ? o.head : A.hd + (o.head - A.hd) * (1 - Math.exp(-dtt * (o.head > A.hd + 0.3 ? 30 : 11)));
+      A.mo = A.mo == null ? o.mouth : A.mo + (o.mouth - A.mo) * (1 - Math.exp(-dtt * 16));
+      o.head = A.hd; o.mouth = A.mo;
+    }
+    if (T.lu && T.ph !== 'warp' && !st) { const m = sim.tMouth(T), F = sim.byFrame(T); luredHearts(ctx, m.x + F.nx * 0.3 - F.tx * T.face * 0.15, m.y + F.ny * 0.3 - F.ty * T.face * 0.15, k, t, 5 + T.id); drool(ctx, m.x - F.nx * 0.1, m.y - F.ny * 0.1, k, t + T.id); o.lookX = 0.9; if (T.ph === 'crawl') { o.head = Math.max(o.head, 0.45); o.mouth = Math.max(o.mouth, 0.25); } }
     frame(ctx, T, rf, k, () => {
       ctx.scale(A.f >= 0 ? 1 : -1, 1);
+      if (T.ph === 'warp') { const w = warpK(T); ctx.translate(0, -0.25 * k * (1 - w)); ctx.rotate((1 - w) * 5 * (T.t < T.dur / 2 ? 1 : -1)); ctx.scale(w, w); }
+      turtleBig(ctx, L);
       const box = { x0: -L * 0.62, y0: -L * 0.5, x1: L * 0.7, y1: L * 0.1 };
       statusDraw(ctx, box, (c) => drawTurtle(c, L, st ? st.hold : t, o), st, { off: Math.max(1, L * 0.02), crys: Math.max(1, L / 60) });
     });
@@ -439,8 +495,9 @@ export function drawBayouOver(ctx, sim, t, k) {
     const rf = sim.byFloor(T.ch), A = ANIM.get('t' + T.id), L = TURTLE.L * k;
     frame(ctx, T, rf, k, () => {
       ctx.scale(A && A.f < 0 ? -1 : 1, 1);
+      turtleBig(ctx, L);
       ctx.save(); ctx.beginPath(); ctx.rect(L * 0.35, -L * 0.4, L * 0.4, L * 0.4); ctx.clip();
-      drawTurtle(ctx, L, t, { head: 0.75, glare: 1 });
+      drawTurtle(ctx, L, t, { head: A && A.hd != null ? A.hd : 0.75, mouth: A && A.mo != null ? A.mo : 0, glare: 1 });
       ctx.restore();
     });
   }
@@ -481,11 +538,15 @@ function liftMark(ctx, R, t) {
 }
 
 // ================================================================= events (popups, sound, particles)
+const WAKE = { ph: {}, t: {} }; // faces3: per gator, its last phase and when it woke from a log
+const SNAP = {}; // 0.8.18: per gator, how its last snap went (bayouEvent sets it; drawGators acts it)
 export function bayouEvent(ev, fx, api) {
   const { popup, audio, once } = api;
   switch (ev.type) {
+    case 'baitLure': audio.play('tongue_lick', { vol: 0.45, pitch: 1.3 }); audio.play('cheer_up', { vol: 0.3, pitch: 1.5 }); fx.sparkle(ev.x, ev.y + 0.4, 5, '#ff9ab8'); break; // it has seen the decoy: smitten
     case 'gatorWarn': audio.play('squish', { vol: 0.7, pitch: 0.45 }); once('gator', 'A gator! Its jaws open under a gap: turn that gap away.'); break;
     case 'gatorSnap':
+      SNAP[ev.id] = ev.hit ? 1 : -1; // the face after it: smug (an egg) or a puzzled look (missed)
       audio.play('steel_clang', { vol: ev.hit ? 0.8 : 0.5, pitch: ev.boss ? 0.4 : 0.7 });
       fx.shake = Math.max(fx.shake, ev.hit ? 0.3 : 0.12);
       popup(ev.x, ev.y + 0.55, ev.decoy ? 'Wood!' : ev.stone ? 'Clonk!' : ev.hit ? 'Chomp!' : 'Missed!', { color: ev.hit ? '#ff8a6a' : '#e8f4c8', size: 20, life: 0.9 });

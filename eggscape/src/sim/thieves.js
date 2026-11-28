@@ -29,6 +29,7 @@
 //   Easy: slower, and it gives up a push after a while.
 import { Vec2, Circle } from 'planck';
 import { RING_TH, EGG_W, wrap, clamp } from './geom.js';
+import { dynOf, tellS } from '../data/dynamism.js';
 
 // sizes in metres (render/thieves.js draws the rigs to these): s = rig length unit (100 units); mouthX/Y = where a held
 // egg's centre sits, from the point between its feet (x forward, y up): a hunter carries it crosswise in its jaws, just
@@ -42,23 +43,27 @@ export const RIG = {
 const m3 = (easy, medium, hard) => ({ easy, medium, hard });
 export const HUNT = {
   speed: 1.0, stalk: 0.65, carry: 1.05, flee: 2.4, // m/s
-  warn: m3(1.7, 1.05, 0.85), // crouch telegraph (s)
-  grab: m3(0.6, 0.42, 0.3), // s it bites down before turning back (the trap window opens)
+  // 0.8.19: warn, grab and next are Medium numbers scaled by data/dynamism.js (DYN.weasel x DYN_MODE: thTell / thSnatch /
+  // thRest) and the menace engine's heat (sim/menace.js); its prowl and stalk go in darts (thDart)
+  warn: 1.05, // crouch telegraph (s; x tell)
+  grab: 0.42, // s it bites down before turning back (the trap window opens; x snatch)
   sneak: m3(0.6, 0.8, 1.0), // m/s back to the gap with the egg
   leap: m3(0.8, 0.6, 0.5), // flight through a gap (s)
   lunge: 0.32, hop: 0.45, bonk: 1.0, hurt: 0.5, stunned: 2.2, stash: 0.6, laugh: 0.9, in: 0.8, drop: 0.35,
   trap: m3(5.5, 4.2, 3.4), // s trapped
   hold: m3(2.6, 0, 0), // s it carries an egg before letting go by itself (0 = all the way to the den)
-  next: m3(4, 2.4, 1.8), // s between hunts
+  next: 2.4, // s between hunts (x rest)
   away: m3(14, 10, 8), // s a hit level weasel hides in its den
+  wriggle: m3(6, 8, 11), // s an egg in a level thief's den wriggles free on its own (2026-11-20: no endless loop)
+  wriggleBoss: m3(12, 15, 19), // the same in a boss's den
   trapR: 1.8, sneakMax: 2.5, far: 1.7, near: 0.2,
 };
 export const ROLL = {
   speed: 0.75, flee: 1.8, // m/s
   push: m3(0.22, 0.3, 0.36), // m/s rolling an egg
-  brace: m3(1.4, 0.9, 0.7), // s the telegraph behind the egg
+  brace: 0.9, // s the telegraph behind the egg (0.8.19: x DYN.rat tell)
   hold: m3(4.5, 0, 0), // Easy: gives up a push after this long
-  next: m3(5, 3, 2.4), // s between pushes
+  next: 3, // s between pushes (0.8.19: x DYN.rat rest)
   scare: m3(9, 6, 5), // s hiding after light or water
   stunned: 2.2, hurt: 0.4, cross: 0.9, stash: 0.7, in: 0.7,
   far: 3.2, // m: eggs further than this along the floor it ignores
@@ -84,6 +89,8 @@ const EXT = { rat: [0.33, 0.62], ratking: [0.62, 1.15], weasel: [0.5, 0.95] }; /
 const WDT = 1 / 120; // sim.js DT (the world step; halved under the hourglass)
 const eo = (u) => 1 - (1 - u) * (1 - u);
 const HUNT_ON = new Set(['prowl', 'stalk', 'idle']);
+const COSTLY = new Set(['crouch', 'leap', 'grab', 'carry', 'inner', 'stash', 'brace', 'push']); // 0.8.19 moves that hold a menace token
+const THSKIP = 1.6; // s it shuns the egg it wanted after the player turned its floor under it
 const ROLL_ON = new Set(['prowl', 'idle']);
 const AWAY = new Set(['wait', 'gone', 'hide']);
 
@@ -144,6 +151,27 @@ export const thiefMethods = {
   thBody(T) { const G = RIG[T.kind]; return this.thPt(T, G.bodyX, G.bodyY); },
   thLive(T) { return !AWAY.has(T.ph) && T.ph !== 'flee' && T.ph !== 'defeated' && T.ph !== 'warp'; },
   thM(o) { return o[this.mode] ?? o.medium; },
+  // 0.8.19 its temper (data/dynamism.js) and the menace engine (sim/menace.js): rests / heat, telegraphs (never under
+  // TELL_MIN, longer on the edge of a run), the bite, the speed with the heat and in darts (a burst, a stop: thDart)
+  thD(T) { return dynOf(this, T.kind === 'rat' ? 'rat' : T.kind === 'weasel' ? 'weasel' : T.kind); },
+  thRest(T, v) { return (v * this.thD(T).rest) / this.menaceHeat(); },
+  thTell(T, v) { return tellS(v, this.thD(T).tell) * this.menaceTell(); },
+  thSnatch(T, v) { return v * this.thD(T).snatch; },
+  thGo(T, v) { return v * this.thD(T).tempo * this.menaceHeat() * this.thDart(T); },
+  // darts: along its way it bursts (0.75 of every DART m at 1.6x) and checks (the rest at 0.5x); the mean stays about 1x
+  thDart(T) { const D = T.kind === 'rat' ? [0.55, 0.7, 1.45, 0.55] : [0.7, 0.75, 1.6, 0.5], u = (T.odo / D[0]) % 1; return u < D[1] ? D[2] : D[3]; },
+  thKey(T) { return 'th' + T.id; },
+  // the menace engine's token for a costly start; refused, it PACES by its egg a while (never frozen)
+  thMay(T, move) { if (this.menaceMay(this.thKey(T), move, !!T.boss)) return true; T.pace = Math.max(T.pace || 0, 0.9); return false; },
+  thPace(T, a) { return T.pace > 0 ? a + (0.45 * Math.sin(this.t * 2.4 + T.id * 1.7)) / Math.max(0.5, T.r) : a; },
+  // the player's last move: its floor ring turned under it while it goes for an egg: it switches egg (the one it wanted is
+  // shunned THSKIP s) and goes the other way round if that is where the next one is
+  thAnswer(T) {
+    if (!T.tgt || (T.skipT || 0) > 0 || !this.menaceTurned(T.run, 0.25)) return;
+    T.skip = T.tgt; T.skipT = THSKIP; T.tgt = 0;
+    this.emit('thiefSwitch', { kind: T.kind, ...this.thBody(T) });
+  },
+  thShun(T, e) { return (T.skipT || 0) > 0 && e.id === T.skip; },
   thSet(T, ph, t = 0) { T.ph = ph; T.t = T.dur = t; },
   thSpeed(T, v) { return T.kind === 'ratking' ? v * 0.82 : v; },
 
@@ -157,13 +185,20 @@ export const thiefMethods = {
       for (const T of L) for (const id of T.stash.splice(0)) { const e = this.eggs.find((q) => q.id === id); if (e && e.alive) this.breakEgg(e, 'thief'); }
       return;
     }
+    for (const T of L) if (T.shakeCD > 0) T.shakeCD -= dt;
+    // 2026-11-20 (mykee's testers: once the weasel had an egg in its den it never came back without Papa Rooster or a
+    // power, an endless loop in levels that have neither): a stashed egg wriggles free by itself after a while
+    for (const T of L) {
+      if (!T.stash || !T.stash.length) { T.denT = 0; continue; }
+      if ((T.denT = (T.denT || 0) + dt) >= this.thM(T.boss ? HUNT.wriggleBoss : HUNT.wriggle)) { T.denT = 0; T.shakeCD = 0; this.thShake(T, 'wriggle'); }
+    }
     for (const T of L) {
       if (T.hitCD > 0) T.hitCD -= dt;
       if (T.zap > 0) T.zap = Math.max(0, T.zap - dt);
       if (T.ai === 'hunt') this.huntCarry(T);
       this.thHolds(T);
       if (T.ph === 'warp') { this.thWarpStep(T, dt); continue; }
-      if (T.ph === 'wait') { if ((T.t -= dt) <= 0) { this.thSet(T, 'in', T.ai === 'hunt' ? HUNT.in : ROLL.in); this.thAtDen(T); this.emit('thiefIn', { kind: T.kind, id: T.id, ...this.thBody(T) }); } continue; }
+      if (T.ph === 'wait') { if ((T.t -= dt) <= 0) { this.thSet(T, 'in', this.thRest(T, T.ai === 'hunt' ? HUNT.in : ROLL.in)); this.thAtDen(T); this.emit('thiefIn', { kind: T.kind, id: T.id, ...this.thBody(T) }); } continue; }
       if (T.ph === 'gone') continue;
       if (T.ph === 'hide') { this.thAtDen(T); if ((T.t -= dt) <= 0) { this.thSet(T, 'in', 0.7); this.emit('thiefBack', { kind: T.kind, ...this.thBody(T) }); } continue; }
       // an egg saved: a trapped hunter takes the hit (a save staggers it); a crouching one flinches
@@ -178,7 +213,11 @@ export const thiefMethods = {
         continue;
       }
       if (T.next > 0) T.next -= dt;
+      if (T.pace > 0) T.pace -= dt;
+      if (T.skipT > 0) T.skipT -= dt;
+      if (HUNT_ON.has(T.ph) || T.ph === 'prowl') this.thAnswer(T);
       if (T.ai === 'hunt') this.huntStep(T, T.cuff > 0 ? dt * FIGHT.cuffSlow : dt); else this.rollStep(T, dt); // cuffing a rat costs the King a beat
+      if (!COSTLY.has(T.ph) && this.menaceHolds(this.thKey(T))) this.menaceDone(this.thKey(T), T.ai, 0); // the move is over
     }
     if (this.thBall) this.thFight(dt);
     const B = this.bx && this.bx.boss, K = this.thiefBoss();
@@ -258,8 +297,8 @@ export const thiefMethods = {
         }
         break;
       case 'home': this.thHomeStep(T, dt); break;
-      case 'stash': if ((T.t -= dt) <= 0) { this.thStash(T); this.thSet(T, 'laugh', HUNT.laugh); } break;
-      case 'laugh': case 'drop': if ((T.t -= dt) <= 0) { T.next = Math.max(T.next, this.thM(HUNT.next)); this.thSet(T, 'prowl'); } break;
+      case 'stash': if ((T.t -= dt) <= 0) { this.thStash(T); this.thSet(T, 'laugh', this.thRest(T, HUNT.laugh)); } break;
+      case 'laugh': case 'drop': if ((T.t -= dt) <= 0) { T.next = Math.max(T.next, this.thRest(T, HUNT.next)); this.thSet(T, 'prowl'); } break;
       case 'defeated': if ((T.t -= dt) <= 0) { this.thSet(T, 'flee', 1.2); this.emit('thiefFlee', { kind: T.kind, ...this.thBody(T) }); } break;
       case 'flee': this.thWalk(T, HUNT.flee * dt); T.alpha = clamp(T.t / 0.6, 0, 1); if ((T.t -= dt) <= 0) { T.ph = 'gone'; T.alpha = 0; } break;
     }
@@ -271,7 +310,7 @@ export const thiefMethods = {
     let plan = null;
     if (T.next <= 0) {
       for (const e of this.thEggsAt(T, T.run)) {
-        const p = e.body.getPosition(), ea = Math.atan2(p.y, p.x), d = Math.abs(wrap(ea - T.a)) * R;
+        const p = e.body.getPosition(), ea = Math.atan2(p.y, p.x), d = Math.abs(wrap(ea - T.a)) * R + (this.thShun(T, e) ? 50 : 0);
         if (!plan || d < plan.d) plan = { kind: 'snap', e, d, ea };
       }
       if (!plan) for (const e of this.thEggsAt(T, T.run - 1)) {
@@ -279,7 +318,7 @@ export const thiefMethods = {
         for (const g of this.thGaps(T.run - 1, G.gapMin)) {
           const along = Math.abs(wrap(ea - g.a)) * rIn;
           if (along < HUNT.near || along > HUNT.far) continue;
-          const d = Math.abs(wrap(g.a - T.a)) * R;
+          const d = Math.abs(wrap(g.a - T.a)) * R + (this.thShun(T, e) ? 50 : 0);
           if (!plan || d < plan.d) plan = { kind: 'pounce', e, d, ea, g };
         }
       }
@@ -296,18 +335,18 @@ export const thiefMethods = {
       const face = wrap(plan.ea - T.a) >= 0 ? 1 : -1, stand = plan.ea - (face * G.mouthX) / R;
       const left = Math.abs(wrap(stand - T.a)) * R;
       T.ph = left < 1.5 ? 'stalk' : 'prowl';
-      if (left < 0.1) { T.face = face; this.huntCrouchStart(T, 'snap', -1, 0.75); return; }
-      this.thToward(T, stand, this.thSpeed(T, T.ph === 'stalk' ? HUNT.stalk : HUNT.speed), dt);
+      if (left < 0.1 && this.thMay(T, 'snap')) { T.face = face; this.huntCrouchStart(T, 'snap', -1, 0.75); return; }
+      this.thToward(T, this.thPace(T, stand), this.thGo(T, this.thSpeed(T, T.ph === 'stalk' ? HUNT.stalk : HUNT.speed)), dt);
       return;
     }
     const g = plan.g, face = wrap(plan.ea - g.a) >= 0 ? 1 : -1, left = Math.abs(wrap(g.a - T.a)) * R;
     T.ph = left < 1.5 ? 'stalk' : 'prowl';
-    if (left < 0.1) { T.face = face; this.huntCrouchStart(T, 'pounce', g.gi, 1); return; }
-    this.thToward(T, g.a, this.thSpeed(T, T.ph === 'stalk' ? HUNT.stalk : HUNT.speed), dt);
+    if (left < 0.1 && this.thMay(T, 'pounce')) { T.face = face; this.huntCrouchStart(T, 'pounce', g.gi, 1); return; }
+    this.thToward(T, this.thPace(T, g.a), this.thGo(T, this.thSpeed(T, T.ph === 'stalk' ? HUNT.stalk : HUNT.speed)), dt);
   },
   huntCrouchStart(T, k, gi, f) {
     T.k = k; T.gi = gi;
-    this.thSet(T, 'crouch', this.thM(HUNT.warn) * f * (T.kind === 'ratking' ? 1.1 : 1));
+    this.thSet(T, 'crouch', this.thTell(T, HUNT.warn) * f * (T.kind === 'ratking' ? 1.1 : 1));
     const L = this.huntLanding(T);
     this.emit('thiefWarn', { kind: T.kind, k, x: L.x, y: L.y, ...this.thBody(T) });
   },
@@ -367,12 +406,12 @@ export const thiefMethods = {
     if (T.lu < 1) return;
     T.a = wrap(T.a1); T.r = T.r1;
     T.ch = clamp(this.chAt(T.r + 0.05), 1, T.run);
-    if (T.blocked) { T.ch = T.run; T.next = this.thM(HUNT.next); this.thSet(T, 'bonk', HUNT.bonk); return; }
+    if (T.blocked) { T.ch = T.run; T.next = this.thRest(T, HUNT.next); this.thSet(T, 'bonk', HUNT.bonk); this.thShake(T, 'bonk'); return; } // a bonk also shakes an egg loose from its den (2026-11-20)
     if (T.k === 'hop') { T.ch = T.run; this.thSet(T, T.eid ? 'carry' : 'prowl'); return; }
     const G = RIG[T.kind], e = this.eggs.find((x) => x.id === T.tgt), m = this.thPt(T, G.mouthX, G.mouthY); // the bite lands level (not along the flight's pitch)
-    if (e && this.thCan(T, e)) { const p = e.body.getPosition(); if (Math.hypot(p.x - m.x, p.y - m.y) < G.reach + 0.2) { this.thTake(T, e); return; } }
+    if (e && this.thCan(T, e)) { const p = e.body.getPosition(); if (Math.hypot(p.x - m.x, p.y - m.y) < (G.reach + 0.2) * this.menaceNear()) { this.thTake(T, e); return; } } // (0.8.19 near misses on the edge)
     this.emit('thiefMiss', { kind: T.kind, why: 'dodged', ...this.thBody(T) });
-    T.next = this.thM(HUNT.next) * 0.6; T.tgt = 0;
+    T.next = this.thRest(T, HUNT.next) * 0.6; T.tgt = 0;
     if (T.ch < T.run) { T.sneakT = 0; this.thSet(T, 'inner'); } else this.thSet(T, 'prowl');
   },
   thTake(T, e) {
@@ -381,7 +420,7 @@ export const thiefMethods = {
     e.hold = null; e.honey = 0; e.thf = 1;
     e.body.setActive(false);
     T.eid = e.id; T.hold = 0; T.tgt = 0;
-    if (T.ai === 'hunt') this.thSet(T, 'grab', this.thM(HUNT.grab));
+    if (T.ai === 'hunt') this.thSet(T, 'grab', this.thSnatch(T, HUNT.grab));
     const p = e.body.getPosition();
     this.emit('thiefGrab', { kind: T.kind, x: p.x, y: p.y, egg: e });
   },
@@ -443,6 +482,18 @@ export const thiefMethods = {
       this.emit('thiefDefeat', { kind: T.kind, ...b });
     }
     return true;
+  },
+  // 2026-11-16 (mykee: an egg stashed in the den never came back, and the player could not tell how to get it): any
+  // knock-out of a thief (a chick power, the rooster or goose, a power's freeze, zap, spin or scare, a daze) shakes ONE
+  // stashed egg loose from its den, not only a hit on a trapped weasel. A short cooldown per den keeps it one at a time.
+  thShake(T, why) {
+    const O = this.thOwner(T);
+    if (!O || !O.stash || !O.stash.length || (O.shakeCD || 0) > 0) return 0;
+    O.shakeCD = 1.5;
+    const id = O.stash.shift(), e = this.eggs.find((q) => q.id === id);
+    this.thFree(e, 'den');
+    if (e) { const p = e.body.getPosition(); this.emit('thiefShake', { kind: T.kind, why, x: p.x, y: p.y, n: O.stash.length }); }
+    return id;
   },
   // let go of the egg it holds, where it is (a short safe moment so the release never cracks it)
   thLetGo(T, why) {
@@ -510,7 +561,7 @@ export const thiefMethods = {
     T.r = this.thFloor(T.ch);
     const left = this.thToward(T, d.a, T.ai === 'hunt' ? HUNT.speed * 1.4 : ROLL.flee, dt);
     if (left < 0.05 || (T.t -= dt) <= 0) {
-      this.thSet(T, 'hide', T.ai === 'hunt' ? this.thM(HUNT.away) : (T.k === 'scare' ? this.thM(ROLL.scare) : this.thM(ROLL.next) + 2));
+      this.thSet(T, 'hide', T.ai === 'hunt' ? this.thM(HUNT.away) : (T.k === 'scare' ? this.thM(ROLL.scare) : this.thRest(T, ROLL.next) + 2));
       T.k = '';
       this.emit('thiefHide', { kind: T.kind, x: d.x, y: d.y });
     }
@@ -530,7 +581,7 @@ export const thiefMethods = {
       case 'brace': this.rollBrace(T, dt); break;
       case 'push': this.rollPush(T, dt); break;
       case 'stash': if ((T.t -= dt) <= 0) { this.thStash(T); this.thSet(T, 'laugh', 0.8); } break;
-      case 'cross': case 'laugh': case 'drop': if ((T.t -= dt) <= 0) { T.next = Math.max(T.next, this.thM(ROLL.next)); this.thSet(T, 'prowl'); } break;
+      case 'cross': case 'laugh': case 'drop': if ((T.t -= dt) <= 0) { T.next = Math.max(T.next, this.thRest(T, ROLL.next)); this.thSet(T, 'prowl'); } break;
       case 'hurt': if ((T.t -= dt) <= 0) this.thSet(T, 'stunned', ROLL.stunned); break;
       case 'stunned': if ((T.t -= dt) <= 0) { T.next = Math.max(T.next, 1.5); this.thSet(T, 'prowl'); } break;
       case 'home': this.thHomeStep(T, dt); break;
@@ -559,8 +610,8 @@ export const thiefMethods = {
     const R = T.r, d0 = this.thDenPt(T);
     let plan = null;
     if (T.next <= 0) for (const e of this.thEggsAt(T, T.run)) {
-      const p = e.body.getPosition(), ea = Math.atan2(p.y, p.x), d = Math.abs(wrap(ea - T.a)) * R;
-      if (d > ROLL.far || Math.hypot(p.x, p.y) < R - 0.6) continue; // only eggs resting on its floor
+      const p = e.body.getPosition(), ea = Math.atan2(p.y, p.x), d = Math.abs(wrap(ea - T.a)) * R + (this.thShun(T, e) ? 2 : 0);
+      if (d > ROLL.far + (this.thShun(T, e) ? 2 : 0) || Math.hypot(p.x, p.y) < R - 0.6) continue; // only eggs resting on its floor
       const toDen = wrap(d0.a - ea);
       if (Math.abs(toDen) * R < 0.35) continue; // already at the hole: it would just drop in
       if (!plan || d < plan.d) plan = { e, d, ea, dir: toDen > 0 ? 1 : -1 };
@@ -575,9 +626,9 @@ export const thiefMethods = {
     T.tgt = plan.e.id;
     // stand behind the egg (the side away from the hole), nose to the shell, facing the hole
     const G = RIG.rat, stand = plan.ea - (plan.dir * (G.mouthX + EGG_W / 2)) / R, left = Math.abs(wrap(stand - T.a)) * R;
-    if (left < 0.06) { T.face = plan.dir; this.thSet(T, 'brace', this.thM(ROLL.brace)); this.emit('thiefWarn', { kind: T.kind, k: 'roll', ...this.thBody(T) }); return; }
+    if (left < 0.06 && this.thMay(T, 'roll')) { T.face = plan.dir; this.thSet(T, 'brace', this.thTell(T, ROLL.brace)); this.emit('thiefWarn', { kind: T.kind, k: 'roll', ...this.thBody(T) }); return; }
     // walk round to that side: a rat on the wrong side walks past the egg (over it, nimbly)
-    this.thToward(T, stand, ROLL.speed, dt);
+    this.thToward(T, this.thPace(T, stand), this.thGo(T, ROLL.speed), dt); // (refused a token: it paces by the egg)
     T.ph = 'prowl';
   },
   rollBrace(T, dt) {
@@ -652,6 +703,7 @@ export const thiefMethods = {
     if (['leap', 'hurt', 'warp', 'home', 'hide', 'wait', 'gone', 'defeated', 'flee'].includes(T.ph)) return;
     this.thLetGo(T, 'daze');
     if (T.ph === 'trapped') return;
+    this.thShake(T, why);
     if (T.ai === 'hunt') T.ch = T.r < this.thFloor(T.run) - 0.3 ? T.run - 1 : T.run;
     this.thSet(T, 'stunned', dur);
     this.emit('thiefDaze', { kind: T.kind, why, ...this.thBody(T) });
@@ -660,16 +712,16 @@ export const thiefMethods = {
   thiefP2Only(T, kind, Tm) {
     const b = this.thBody(T);
     if (T.ph === 'trapped' && kind !== 'pepper' && kind !== 'scare') { this.thHurt(T, kind, b); if (kind === 'ice') T.frozen = Math.min(Tm, 3); return; }
-    if (kind === 'ice') { this.thLetGo(T, 'daze'); T.frozen = Tm; if (T.ph === 'crouch' || T.ph === 'toss' || T.ph === 'brace') this.thSet(T, 'prowl'); this.emit('thiefFreeze', { kind: T.kind, ...b, t: Tm }); return; }
+    if (kind === 'ice') { this.thLetGo(T, 'daze'); this.thShake(T, 'ice'); T.frozen = Tm; if (T.ph === 'crouch' || T.ph === 'toss' || T.ph === 'brace') this.thSet(T, 'prowl'); this.emit('thiefFreeze', { kind: T.kind, ...b, t: Tm }); return; }
     if (kind === 'bolt' || kind === 'zap') { T.zap = 0.3; this.thDaze(T, Math.min(Tm, 3), kind); return; }
-    if ((kind === 'pepper' || kind === 'scare' || kind === 'out') && !T.boss) { this.thLetGo(T, 'daze'); T.k = 'scare'; T.tgt = 0; this.thSet(T, 'home', 6); return; }
+    if ((kind === 'pepper' || kind === 'scare' || kind === 'out') && !T.boss) { this.thLetGo(T, 'daze'); this.thShake(T, kind); T.k = 'scare'; T.tgt = 0; this.thSet(T, 'home', 6); return; }
     this.thDaze(T, kind === 'spin' || kind === 'out' ? 1.5 : 1.2, kind);
     T.next = Math.max(T.next, kind === 'pepper' || kind === 'scare' ? Tm : 2);
   },
   // the live ring (shock power) zaps a thief standing on it
   thiefShock(ri, Tm) { for (const T of this.thieves || []) if (this.thLive(T) && T.ch === ri && T.ph !== 'leap' && T.ph !== 'stunned' && T.ph !== 'home' && !(T.hitCD > 0)) { T.hitCD = 1; T.zap = 0.3; this.thDaze(T, Math.min(Tm, 2.5), 'zap'); } },
   // an ally knocks a thief out of the way: it lets go and runs home
-  thiefKnock(T) { if (!this.thLive(T)) return; this.thLetGo(T, 'daze'); T.k = 'scare'; if (T.boss) this.thSet(T, 'stunned', 2.5); else this.thSet(T, 'home', 6); },
+  thiefKnock(T) { if (!this.thLive(T)) return; this.thLetGo(T, 'daze'); this.thShake(T, 'ally'); T.k = 'scare'; if (T.boss) this.thSet(T, 'stunned', 2.5); else this.thSet(T, 'home', 6); },
 
   // ---------- the warp gate (sim/warp.js): it is swallowed as it springs and spat out on the far side of its run
   warpThief(W, T) {
@@ -750,7 +802,7 @@ export const thiefMethods = {
   thParkAll() { for (const T of this.thieves) if (this.thBall[T.id] && T.ph === 'sqBall') { this.thPark(T); T.ph = 'stunned'; T.t = T.dur = 1; T.sq = 0; } },
   // signed speed along the floor (m/s, + = increasing angle) from what it is doing
   thVel(T) {
-    if (T.ph === 'prowl') return T.face * ROLL.speed * (T.tgt ? 1 : 0.5);
+    if (T.ph === 'prowl') return T.face * ROLL.speed * (T.tgt ? this.thD(T).tempo : 0.5);
     if (T.ph === 'push') return T.face * this.thM(ROLL.push);
     return 0;
   },

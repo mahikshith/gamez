@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12+ system splash icon: the icon's egg, inset so all of it sits inside the splash's round mask
+     (288dp box, 192dp circle: 84% of the box = 242dp, the size the page and the opening draw it at). -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android" android:drawable="@drawable/ic_fg" android:inset="8%" />

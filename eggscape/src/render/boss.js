@@ -7,16 +7,19 @@ import { RING_TH, TAU } from '../sim/geom.js';
 import { ringPoint, galeNow, heatOf, bossPhases, bossProgress, BOSS_TITLE, ATTACK_NAME } from '../sim/boss.js';
 import { isSpriteCalm } from './sprites.js';
 import { drawThiefEmblem } from './thieves.js';
+import { drawSalamander } from './salamander.js'; // 0.8.18 lava: the boss bar's face
 import { drawKingEmblem, drawKingBar } from './kingcrab.js'; // world 8 boss
 import { drawOwlBoss, drawOwlRings, drawOwlEmblem, drawOwlBar } from './owl.js'; // v4 the Clockwork Owl
 import { drawGatorEmblem } from './bayou.js'; // v3.7
 import { drawIcicle } from './v3art.js';
+import { drawLavaMark } from './world.js'; // 0.8.19 (aggroB) the volcano's marks
 import { drawMammoth, drawMammothEmblem, MAMMOTH_FOOT } from './mammoth.js'; // world 3 boss: Old Frostbeard
 import { drawMovesRings, drawMovesOver } from './bossmoves.js'; // the variety moves (sim/bossmoves.js)
 import { drawOrb } from './powers.js';
 import { statusClock, statusKind, statusDraw, dizzyStars } from './status.js';
 import { geckoAnchor, geckoFreeze, drawGeckoEmblem, drawGeckoOver } from './gecko15.js'; // L15: Baron von Brr, the frost gecko (his body: render/salamander.js)
 import { thornAnchor, drawThornEmblem, drawSpikes, drawThornOver } from './crystal20.js'; // L20: Duke Quartz, the crystal thorn-back (his body: render/salamander.js)
+import { drawBanditEmblem } from './banditplay.js'; // 0.8.17 bandit
 
 const pxSpace = (ctx, x, y, k, f) => { ctx.save(); ctx.translate(x, y); ctx.scale(1 / k, -1 / k); try { f(); } catch (e) { if (globalThis.__eggDebug) console.error(e); /* art never breaks the frame */ } ctx.restore(); };
 const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
@@ -143,11 +146,8 @@ export function drawBossRings(ctx, sim, k, t) {
       ctx.fill();
       ctx.restore();
     }
-  } else if (A.name === 'rock' || A.name === 'rock2') {
-    for (const s of A.spots || []) {
-      const q = ringPoint(sim, s.ri, s.la, sim.rings[s.ri].r);
-      target(ctx, q.x, q.y, 0.5 - 0.1 * u, '#ffb347', t);
-    }
+  } else if (A.name === 'rock' || A.name === 'rock2' || A.name === 'rock3') {
+    for (const s of A.spots || []) drawLavaMark(ctx, sim, s.ri, s.la, 1.0, 0.33 * u, t, isSpriteCalm()); // 0.8.19 (aggroB): the section the volcano's bomb will make red-hot
   } else if (A.name === 'throw' || A.name === 'throw2') {
     for (const s of A.spots || []) target(ctx, s.x, s.y, 0.45 - 0.08 * u, '#ff4d4d', t, true);
   } else if (A.name === 'fog') {
@@ -454,7 +454,23 @@ function drawStar(ctx, x, y, r, col) {
 
 // the bar's portrait chip: a small code-drawn emblem per boss (screen space, y down)
 const EMBLEM_BG = { weasel: '#4f7a3a', ratking: '#6a2f8a', snake: '#2f7a3a', blizzard: '#3f7fb8', golem: '#6a4fc8', salamander: '#c43a14', eagle: '#3a4a78', storm: '#3a4a78', kingcrab: '#1f6a96', owl: '#1d3a5c', gator: '#2f5a3a' };
+EMBLEM_BG.raccoon = '#2c2a4a'; // 0.8.17 bandit
+// The chip is tiny but redraws a whole character; keep it on an offscreen canvas and refresh it ~12x a second.
+const EMB = new Map();
 function drawBossEmblem(ctx, kind, cx, cy, d, t) {
+  const sc = Math.max(1, ctx.getTransform().a), S = Math.ceil(d * sc) + 4, key = kind + '|' + S;
+  let E = EMB.get(key);
+  if (!E) { const c = document.createElement('canvas'); c.width = c.height = S; EMB.set(key, (E = { c, t: -9 })); }
+  if (t - E.t > 1 / 12 || t < E.t) {
+    const g = E.c.getContext('2d');
+    g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, S, S);
+    g.setTransform(sc, 0, 0, sc, S / 2, S / 2);
+    drawBossEmblemLive(g, kind, 0, 0, d, t);
+    E.t = t;
+  }
+  ctx.drawImage(E.c, cx - S / sc / 2, cy - S / sc / 2, S / sc, S / sc);
+}
+function drawBossEmblemLive(ctx, kind, cx, cy, d, t) {
   const r = d / 2;
   ctx.save();
   ctx.beginPath();
@@ -476,22 +492,14 @@ function drawBossEmblem(ctx, kind, cx, cy, d, t) {
     drawOwlEmblem(ctx, r, t);
   } else if (kind === 'gator') {
     drawGatorEmblem(ctx, r, t);
+  } else if (kind === 'raccoon') { // 0.8.17 bandit
+    drawBanditEmblem(ctx, r, t);
   } else if (kind === 'blizzard') {
     drawGeckoEmblem(ctx, r, t);
   } else if (kind === 'golem') {
     drawThornEmblem(ctx, r, t); // Duke Quartz's face
-  } else if (kind === 'salamander') {
-    ctx.fillStyle = '#ffd04a';
-    ctx.beginPath();
-    ctx.moveTo(0, -r * 0.72);
-    ctx.quadraticCurveTo(r * 0.55, -r * 0.1, r * 0.35, r * 0.4);
-    ctx.quadraticCurveTo(0, r * 0.75, -r * 0.35, r * 0.4);
-    ctx.quadraticCurveTo(-r * 0.55, -r * 0.1, 0, -r * 0.72);
-    ctx.fill();
-    ctx.fillStyle = '#ff7a1a';
-    ctx.beginPath();
-    ctx.ellipse(0, r * 0.25, r * 0.18, r * 0.28, 0, 0, TAU);
-    ctx.fill();
+  } else if (kind === 'salamander') { // 0.8.18 lava: his own face (the new rig), smug, looking at you
+    drawSalamander(ctx, 0, -r * 0.32, r * 2.4, t, { heading: -Math.PI / 2, pose: 'idle', id: 17, noShadow: 1, glow: 0.9, look: { x: 0.5, y: 0.5 }, expr: { k: 'smug', a: 1 } });
   } else if (kind === 'snake') {
     ctx.strokeStyle = '#9be36a';
     ctx.lineWidth = r * 0.22;
@@ -544,11 +552,12 @@ export function drawBossBar(ctx, ui, sim, x, y, w, h, t) {
   const ic = h * 1.15;
   drawBossEmblem(ctx, B.kind, x + ic * 0.45, y + h / 2, ic, t);
   const title = BOSS_TITLE[B.kind] || 'Boss';
-  const nameX = x + ic * 0.95, nameW = Math.min(w * 0.34, ui.measure(title, 13 * u) + 4);
-  ui.text(title, nameX, y + h / 2, { size: 13 * u, maxW: nameW, color: '#ffe3b0', stroke: 'rgba(0,0,0,0.6)', tag: 'hud:bossName' });
+  const slim = w < 230 * u; // beside the egg tray (2026-11-19): no name, the emblem says who it is
+  const nameX = x + ic * 0.95, nameW = slim ? 0 : Math.min(w * 0.34, ui.measure(title, 13 * u) + 4);
+  if (!slim) ui.text(title, nameX, y + h / 2, { size: 13 * u, maxW: nameW, color: '#ffe3b0', stroke: 'rgba(0,0,0,0.6)', tag: 'hud:bossName' });
   // phase segments
   const bx = nameX + nameW + 8 * u, bw = x + w - 6 * u - bx, by = y + h * 0.22, bh = h * 0.56, gap = 4 * u;
-  const F = (B.den && sim.thiefBoss && sim.thiefBoss()) || (B.kind === 'gator' && sim.gatorBossBar && sim.gatorBossBar()); // v3.7: Grandpa's teeth
+  const F = (B.den && sim.thiefBoss && sim.thiefBoss()) || (B.kind === 'gator' && sim.gatorBossBar && sim.gatorBossBar()) || (B.kind === 'raccoon' && sim.bandBossBar && sim.bandBossBar()); // v3.7: Grandpa's teeth // 0.8.17 bandit
   if (F) { drawDenBar(ctx, ui, F, B, bx, bw, y, by, bh, h, gap, t); ctx.restore(); return; } // v3.5: hit pips
   if (B.kind === 'kingcrab' && sim.kc) { drawKingBar(ctx, ui, sim, B, bx, bw, y, by, bh, h, gap, t); ctx.restore(); return; } // world 8: shell pips
   if (B.kind === 'owl' && sim.owl) { drawOwlBar(ctx, ui, sim, B, bx, bw, y, by, bh, h, gap, t); ctx.restore(); return; } // v4: gear pips
@@ -578,43 +587,40 @@ function drawDenBar(ctx, ui, F, B, bx, bw, y, by, bh, h, gap, t) {
     bossPip(ctx, ui, sx, by, sw, bh, null);
     if (i < F.hp) bossPip(ctx, ui, sx, by, sw, bh, hot ? (Math.floor(t * 6) % 2 ? '#ffd63c' : '#ffb03c') : ph === 'crouch' ? '#ff6a3d' : '#ff9a3d');
   }
+  if (F.icon) { barIcon(ctx, F.icon, bx + bw / 2, y + h / 2, h * 0.78, t); return; } // 0.8.18 bandit: a picture, no words
   const label = F.label || (F.hp <= 0 || ph === 'defeated' || ph === 'flee' || ph === 'gone' ? 'DEFEATED!'
     : ph === 'trapped' ? 'TRAPPED! HIT IT' : ph === 'crouch' ? 'POUNCE!' : F.eid ? 'STOLE AN EGG!'
       : warn ? (ATTACK_NAME[B.atk.name] || '').toUpperCase() + '!' : 'TRAP IT!');
   ui.text(label, bx + bw / 2, y + h / 2, { size: 12 * u, align: 'center', maxW: bw - 8 * u, color: '#fff', stroke: 'rgba(0,0,0,0.75)', tag: 'hud:bossPhase' });
 }
 
-// ---------- magnet (v3.1): no tether line. Each egg of a magnet pair wears a pulsing horseshoe field: thin arcs
-// that ripple outward on the side facing its partner, red at one tip and blue at the other.
-export function drawMagnetField(ctx, sim, t) {
-  for (const e of sim.aliveEggs()) {
-    if (!(e.magnet > 0) || !e.joint) continue;
-    const o = e.joint.a === e ? e.joint.b : e.joint.a;
-    if (!o || !o.alive || o.saved || !o.body) continue;
-    const p = e.body.getPosition(), q = o.body.getPosition(), dir = Math.atan2(q.y - p.y, q.x - p.x);
-    const fade = Math.min(1, e.magnet / 0.6);
-    ctx.save();
-    ctx.lineCap = 'round';
-    for (let i = 0; i < 3; i++) {
-      const f = (t * 0.9 + i / 3 + (e.id % 2) * 0.17) % 1, R = 0.33 + 0.34 * f, span = 1.0 - 0.35 * f;
-      ctx.globalAlpha = fade * (1 - f) * 0.9;
-      ctx.lineWidth = 0.028 * (1 - 0.4 * f);
-      ctx.strokeStyle = '#ff4f5e';
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, R, dir - span, dir);
-      ctx.stroke();
-      ctx.strokeStyle = '#4f8dff';
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, R, dir, dir + span);
-      ctx.stroke();
-      // tips
-      for (const [a, c] of [[dir - span, '#ff4f5e'], [dir + span, '#4f8dff']]) {
-        ctx.fillStyle = c;
-        ctx.beginPath();
-        ctx.arc(p.x + R * Math.cos(a), p.y + R * Math.sin(a), 0.03 * (1 - 0.4 * f), 0, TAU);
-        ctx.fill();
-      }
-    }
-    ctx.restore();
+// 0.8.18 bandit: the bar's hint as a picture. 'ringArrow': a ring with a fat arrow the way to turn it (dir +1 counter-
+// clockwise on screen), lit and nudging while it matters; 'sack': his loot sack, tied (he is beaten)
+function barIcon(ctx, I, cx, cy, d, t) {
+  const r = d * 0.36, lw = Math.max(2, d * 0.12);
+  ctx.save(); ctx.translate(cx, cy); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  if (I.kind === 'sack') {
+    ctx.fillStyle = '#c99c58'; ctx.strokeStyle = '#2a1a10'; ctx.lineWidth = lw * 0.5;
+    ctx.beginPath(); ctx.ellipse(0, r * 0.25, r * 0.85, r * 0.75, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-r * 0.35, -r * 0.45); ctx.lineTo(-r * 0.55, -r * 0.95); ctx.lineTo(0, -r * 0.7); ctx.lineTo(r * 0.55, -r * 0.95); ctx.lineTo(r * 0.35, -r * 0.45); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.restore(); return;
   }
+  const dir = I.dir < 0 ? -1 : 1, hot = I.hot && !I.off, nudge = hot ? 0.18 * Math.max(0, Math.sin(t * 7)) : 0, rot = -dir * nudge; // canvas y-down: counter-clockwise on screen is a negative turn
+  ctx.globalAlpha *= I.off ? 0.45 : 1;
+  ctx.rotate(rot);
+  // the ring: a dark band, as in play
+  ctx.strokeStyle = '#2a1a10'; ctx.lineWidth = lw * 1.6; ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke();
+  ctx.strokeStyle = '#b07a42'; ctx.lineWidth = lw; ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke();
+  // the arrow round its top, pointing the way to turn
+  const col = hot ? '#ffe14a' : '#ffd08a', a0 = -Math.PI * 0.85, a1 = -Math.PI * 0.15, head = dir > 0 ? a0 : a1, tail = dir > 0 ? a1 : a0;
+  ctx.strokeStyle = '#2a1a10'; ctx.lineWidth = lw * 1.9; ctx.beginPath(); ctx.arc(0, 0, r * 1.45, Math.min(a0, a1) + 0.12, Math.max(a0, a1) - 0.12); ctx.stroke();
+  ctx.strokeStyle = col; ctx.lineWidth = lw * 1.1; ctx.beginPath(); ctx.arc(0, 0, r * 1.45, Math.min(a0, a1) + 0.12, Math.max(a0, a1) - 0.12); ctx.stroke();
+  const hx = Math.cos(head) * r * 1.45, hy = Math.sin(head) * r * 1.45, tx = dir > 0 ? Math.sin(head) : -Math.sin(head), ty = dir > 0 ? -Math.cos(head) : Math.cos(head), nx = Math.cos(head), ny = Math.sin(head), L = r * 0.7, W = r * 0.5;
+  ctx.beginPath(); ctx.moveTo(hx + tx * L, hy + ty * L); ctx.lineTo(hx + nx * W, hy + ny * W); ctx.lineTo(hx - nx * W, hy - ny * W); ctx.closePath();
+  ctx.fillStyle = col; ctx.strokeStyle = '#2a1a10'; ctx.lineWidth = lw * 0.45; ctx.fill(); ctx.stroke();
+  void tail;
+  ctx.restore();
 }
+
+// ---------- magnet: its look moved to render/magnet.js (2026-11-20 redesign)
+export { drawMagnetField } from './magnet.js';

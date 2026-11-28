@@ -45,7 +45,9 @@ export function value(sim) {
   let v = st.saved * 1500 - st.broken * 2500 + st.score * 0.2;
   if (sim.thieves && sim.thieves.length) v += sim.thiefScore(); // v3.6: a trapped or beaten thief boss is worth something
   if (sim.kc) v += sim.reefScore(); // world 8: a stuck or beaten King Crab claw
-  const reef = sim.hermits.length || sim.puffs.length || sim.jellies.length || sim.kc;
+  const reef = sim.hermits.length || sim.puffs.length || sim.jellies.length || sim.kc || (sim.urchins || []).length; // 0.8.17 urchin
+  if (sim.band) v += sim.bandScore(); // 0.8.17 bandit: a pinched or beaten raccoon
+  if (sim.kit) v += sim.kitScore(); // 0.8.18 kits: a failed fetch, mama gone
   for (const e of sim.aliveEggs()) {
     const c = sim.channelOf(e);
     v += c * 300 - e.cracks * 200 + e.mult * 15;
@@ -59,7 +61,13 @@ export function value(sim) {
     if (sim.salThreat) v -= 450 * sim.salThreat(e);
     if (sim.thieves.length) v -= 1600 * sim.thiefThreat(e); // v3.6: held or stashed by a thief, or about to be
     if (reef) v -= 1600 * sim.reefThreat(e); // world 8: in a claw or the King Crab's pile, a crab's shell, a jelly's reach
+    if (sim.band) v -= 1600 * sim.bandThreat(e); // 0.8.17 bandit: in his paw or his sack, or about to be
+    if (sim.kit) v -= 1600 * sim.kitThreat(e); // 0.8.18 kits: carried off or in mama's sack
     if (sim.bayouPlan) v -= 1500 * sim.bayouPlan(e); // v3.7: gator jaws, a turtle's clamp, a mosquito lift
+    if (sim.pips && sim.pips.length) v -= 500 * sim.pipThreat(e); // 0.8.17 pip
+    if (sim.cocos && sim.cocos.length) v -= 700 * sim.cocoThreat(e); // 0.8.17 coco
+    if (sim.frogs && sim.frogs.length) v -= 1400 * sim.frogThreatOf(e); // 0.8.18 frog: in its cheeks, or locked on with a clear line
+    if (sim.creeps && sim.creeps.length) v -= 1300 * sim.creepThreat(e); // 0.8.18 creeper: an egg on its stretch with the head coming
     // predators (v3): an egg the eagle can reach while it is locked on
     const E = sim.eagle;
     if (E && E.reach && (E.phase === 'warn' || E.phase === 'dive') && E.tk !== 'snake' && E.tid === e.id) v -= 700;
@@ -69,7 +77,7 @@ export function value(sim) {
       const p = e.body.getPosition(), u = e.body.getLinearVelocity(), g = sim.g, s = sim.gy || 1, uy = u.y * s;
       const h = Math.max(0, (p.y - sim.nestY) * s), tf = (uy + Math.sqrt(uy * uy + 2 * g * h)) / g;
       const nx = sim.nestAmp ? sim.nestXAt(sim.t + tf) : sim.nest.getPosition().x;
-      if (Math.abs(p.x + u.x * (sim.water ? Math.min(tf, 0.6) : tf) - nx) > sim.nestW / 2 - 0.15) v -= 2400;
+      if (Math.abs(p.x + u.x * (sim.water ? Math.min(tf, 0.6) : tf) - nx) > sim.nestW / 2 - 0.15 && !(sim.reach && sim.reachCatchable(e))) v -= 2400; // nest.reach: the hen runs it under
     }
     // shaping: how far the floor ring's nearest gap is from the egg, so "bring a gap round" scores
     const ring = sim.rings[c];
@@ -97,6 +105,8 @@ export function actions(sim) {
     if (c < sim.rings.length) floors.add(c);
     if (c + 1 < sim.rings.length) floors.add(c + 1);
   }
+  if (sim.cocoRingsHeld) for (const i of sim.cocoRingsHeld()) floors.add(i); // 0.8.17 coco: a flick of the ring he holds is a move
+  if (sim.kit) { const K = sim.kitLesson(); if (K) floors.add(K.ring); } // 0.8.18 kits: a turn of the floor they walk on is a move
   // a geared partner turns with its ring: one of the two is enough
   for (const i of [...floors]) { const T = sim.rings[i].gear; if (T && T.some((r) => r.i < i && floors.has(r.i))) floors.delete(i); }
   for (const i of floors) if (sim.rings[i].grabbable) for (const d of DELTAS) if (!sim.canTurn || sim.canTurn(sim.rings[i], d)) out.push({ ring: i, delta: d });

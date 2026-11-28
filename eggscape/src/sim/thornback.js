@@ -6,7 +6,7 @@
 //   golem attacks (sim/boss.js stomp punch, sim/bossmoves.js cage shards) come from him; a due attack waits while he can't act.
 // level.bossFight.spike {delay, dir}: Spike, his sandy cousin (role 'spike'): 85% size, no boss attacks; on Easy he waits
 //   for the boss's phase 2 as well.
-// Both: crawl in through a gap of the outer ring, hunt the leading egg, never eat or break one.
+// Both: crawl in through a gap of the outer ring, hunt the leading egg. They do not eat eggs; the hip-check cracks one (0.8.14).
 //   Drop: every THORN.every s, when free, he hunches and flicks a spike off his back onto the floor just behind him: a
 //     crystal (Duke) or a thorn (Spike) that stands THORN life s (boss.js SPIKE: the thorn rule; a stone egg or a fast turn
 //     of either channel wall breaks it). At most THORN.max[role] stand at once. A standing spike also blocks the lizards.
@@ -21,7 +21,9 @@ import { Vec2 } from 'planck';
 import { addSpike, removeWall } from './boss.js';
 
 export const THORN = {
-  svl: 1.5, spikeK: 0.85, speed: 0.375, // m snout to hips (Duke); Spike's size factor; m/s (75% of the salamander's walk)
+  // m snout to hips (Duke; was 1.5: now drawn at the salamander's presence, the hit tests follow); Spike's size factor;
+  // m/s (75% of the salamander's walk)
+  svl: 1.85, spikeK: 0.85, speed: 0.375,
   every: 7, dropT: 0.9, dropAt: 0.55, max: { duke: 3, spike: 2 },
   reach: 0.55, hipT: 0.7, hipAt: 0.32, shoveV: 1.7, clear: 1.3, bored: 4,
   flip: 4, flipV: 0.5, flipR: 0.55,
@@ -30,10 +32,16 @@ export const THORN = {
 const BUSY = ['in', 'daze', 'flip', 'duel', 'thrown', 'hip', 'drop', 'retreat', 'gloat'];
 const mod = (a, b) => ((a % b) + b) % b;
 
+// 0.8.19 the spike roll (the owner: "not aggressive enough"): an egg down his channel with a clear run: he curls up (dyn tell),
+// rolls as a spiked ball at ROLL.v m/s (x the mode's window) for up to ROLL.max m, riding the ring he rolls on (so turning that
+// ring against him carries him the wrong way or stalls him). An egg he hits: one crack (Easy: never the breaking one) and the
+// hip-check's shove; a stone egg or a standing spike stops him on his back. ROLL.cd s before the next.
+export const ROLL = { min: 1.0, max: 4, over: 0.5, v: 2.2, cd: 6, uncurl: 0.5, hitR: 0.45 };
+const DYN_ROLL = 1.4; // the Medium window (src/data/dynamism.js thornback.snatch) the speed above is for
 export const thornMethods = {
   thornOf(role) { return (this.sals || []).find((C) => C.sp === 'thornback' && C.role === role) || null; },
   duke() { return this.thornOf('duke'); },
-  thornSvl(C) { return C.size * 1.8; },
+  thornSvl(C) { return C.size * 1.8; }, // (SAL.svl: C.size is THORN.svl / SAL.svl)
 
   thornEnter(C) {
     const B = this.bx && this.bx.boss;
@@ -73,14 +81,20 @@ export const thornMethods = {
         if (play && duke && B && B.atk) { this.salHalt(C, 'atk', 0); break; }
         if (play && C.bored <= 0 && !C.climb) {
           const e = this.thornPrey(C);
-          if (e) { C.lk = e.id; C.lkd = 0; this.salHalt(C, 'hip', THORN.hipT); break; }
+          if (e) { if (this.salMay(C, 'hip')) { C.lk = e.id; C.lkd = 0; this.salHalt(C, 'hip', THORN.hipT); } else this.salHalt(C, 'stalk', 0.5); break; }
+        }
+        if (play && C.rcd <= 0 && !C.climb && !this.salCrossing(C) && !(duke && B && B.atk)) { // 0.8.19 an egg down the channel: the spike roll
+          const R = this.thornRollAt(C);
+          if (R && this.salMay(C, 'roll')) { C.lk = R.e.id; this.salHalt(C, 'curl', this.salDyn(C).tell); break; }
         }
         if (play && C.dropT <= 0 && !C.climb && !this.salCrossing(C) && C.ph === 'walk') { C.lkd = 0; this.salHalt(C, 'drop', THORN.dropT); break; }
+        if (play && C.bored <= 0 && !C.climb && !(duke && B && B.atk) && this.salChase(C)) break; // the brain: a target behind him turns him round
         if (this.thornBlocked(C)) { if (C.ph !== 'block') { this.salSet(C, 'block'); this.emit('thornBlocked', { x: C.pts[0].x, y: C.pts[0].y, id: C.id }); } break; }
         if (C.ph === 'block') this.salSet(C, 'walk');
-        this.salMove(C, spd * dt);
+        this.salMove(C, spd * (C.ht >= 0 && C.bored <= 0 ? this.salDyn(C).tempo : 1) * dt); // 0.8.19: the dyn tempo while hunting (was none: the old PRED.chase made Medium too hard)
         break;
       }
+      case 'turn': this.salTurnStep(C, dt); break;
       case 'brake': {
         const r = (C.stopAt - C.odo) * C.mv, d = Math.min(Math.max(0, r), 1.1 * dt);
         if (C.mv > 0) this.salMove(C, d, true); else this.salBackWalk(C, d);
@@ -90,7 +104,7 @@ export const thornMethods = {
       case 'atk': if (!play || !B || !B.atk) this.salSet(C, 'walk'); break;
       case 'hip':
         if (!C.lkd && C.dur - C.t >= THORN.hipAt) { C.lkd = 1; this.thornShove(C); }
-        if ((C.t -= dt) <= 0) { C.bored = THORN.bored; C.climbCD = Math.max(C.climbCD, 1.5); this.salSet(C, 'walk'); }
+        if ((C.t -= dt) <= 0) { C.bored = this.salDyn(C).rest; C.climbCD = Math.max(C.climbCD, 1.5); this.salSet(C, 'walk'); } // 0.8.19: was THORN.bored
         break;
       case 'drop':
         if (!C.lkd && C.dur - C.t >= THORN.dropAt) { C.lkd = 1; this.thornDrop(C, this.thornBehind(C)); }
@@ -110,6 +124,16 @@ export const thornMethods = {
         break;
       }
       case 'flip': if ((C.t -= dt) <= 0) { C.flipCD = 1.5; this.salSet(C, 'walk'); } break;
+      case 'stalk': if ((C.t -= dt) <= 0) this.salSet(C, 'walk'); break; // the director said not yet: he squares up, then asks again
+      // 0.8.19 SPIKE ROLL (ROLL): curl up (the tell), roll as a spiked ball down the channel, uncurl
+      case 'curl': {
+        const R = this.thornRollAt(C, C.lk);
+        if (!R) { this.emit('thornRollMiss', { x: C.pts[0].x, y: C.pts[0].y, id: C.id }); C.rcd = ROLL.cd * 0.5; this.salSet(C, 'uncurl', ROLL.uncurl); break; } // the egg got away: he uncurls, cross
+        if ((C.t -= dt) <= 0) { C.rl = Math.min(R.ahead + ROLL.over, ROLL.max + ROLL.over); this.salSet(C, 'roll', 0); this.emit('thornRoll', { x: C.pts[0].x, y: C.pts[0].y, id: C.id, dir: C.dir, egg: R.e }); }
+        break;
+      }
+      case 'roll': if (play) this.thornRollStep(C, dt); break;
+      case 'uncurl': if ((C.t -= dt) <= 0) { C.rcd = ROLL.cd / (this.menaceHeat ? this.menaceHeat() : 1); C.bored = this.salDyn(C).rest; this.salSet(C, 'walk'); } break;
       case 'gloat': if ((C.t -= dt) <= 0) this.salSet(C, 'walk'); break;
       case 'daze': if ((C.t -= dt) <= 0) this.salSet(C, 'walk'); break;
       case 'retreat': {
@@ -123,6 +147,41 @@ export const thornMethods = {
     }
   },
 
+  // 0.8.19 the spike roll: an egg ROLL.min .. ROLL.max m ahead in his channel with nothing sharp between ({e, ahead}); id: that egg only
+  thornRollAt(C, id = -1) {
+    const h = C.pts[0], hc = this.salCh(C), hr = Math.max(0.5, Math.hypot(h.x, h.y)), ha = Math.atan2(h.y, h.x);
+    let best = null;
+    for (const e of this.aliveEggs()) {
+      if ((id >= 0 && e.id !== id) || e.icy > 0 || e.hold || e.honey > 0 || e.thf || e.hc || e.octo || this.channelOf(e) !== hc) continue;
+      const p = e.body.getPosition(), ahead = wrap(Math.atan2(p.y, p.x) - ha) * hr * C.dir;
+      if (ahead < ROLL.min || ahead > ROLL.max + (id >= 0 ? 0.5 : 0) || (best && ahead >= best.ahead)) continue;
+      if (this.thornSharpAhead(hc, ha, C.dir, ahead / hr)) continue;
+      best = { e, ahead };
+    }
+    return best;
+  },
+  thornRollStep(C, dt) {
+    const d = ROLL.v * (DYN_ROLL / this.salDyn(C).snatch) * dt, h = C.pts[0];
+    if (this.thornBlocked(C)) { this.thornFlip(C, THORN.flip * 0.5, 'roll'); this.emit('thornRollBonk', { x: h.x, y: h.y, id: C.id }); return; }
+    this.salMove(C, d, true);
+    C.rl -= d;
+    const R = ROLL.hitR * Math.sqrt(C.size / 0.83);
+    for (const e of this.aliveEggs()) {
+      const p = e.body.getPosition();
+      if (Math.hypot(p.x - h.x, p.y - h.y) > R) continue;
+      if (e.stone > 0) { this.thornFlip(C, THORN.flip, 'stone', p); return; } // a stone egg stops the ball dead: on his back
+      const r = Math.hypot(p.x, p.y) || 1, ea = Math.atan2(p.y, p.x), s = C.dir, tx = -Math.sin(ea) * s, ty = Math.cos(ea) * s;
+      const v = e.body.getLinearVelocity(), vt = v.x * tx + v.y * ty, want = THORN.shoveV * this.vs;
+      if (vt < want) e.body.setLinearVelocity(Vec2(v.x + tx * (want - vt), v.y + ty * (want - vt)));
+      e.body.setAwake(true);
+      const hurt = !this.armored(e) && !e.chick && !(this.MD.softThorns && e.cracks >= 2);
+      if (hurt) { C.tokT = 1; this.crack(e, 0, 'thornback'); }
+      this.emit('thornRollHit', { x: p.x, y: p.y, egg: e, id: C.id, hurt: hurt ? 1 : 0, r });
+      this.salSet(C, 'uncurl', ROLL.uncurl);
+      return;
+    }
+    if (C.rl <= 0) this.salSet(C, 'uncurl', ROLL.uncurl);
+  },
   // a point d m behind the snout along his trail
   thornTrail(C, d) {
     const T = C.pts;
@@ -180,7 +239,10 @@ export const thornMethods = {
     const tx = -Math.sin(ea) * s, ty = Math.cos(ea) * s, v = e.body.getLinearVelocity(), vt = v.x * tx + v.y * ty, want = THORN.shoveV * this.vs;
     if (vt < want) e.body.setLinearVelocity(Vec2(v.x + tx * (want - vt), v.y + ty * (want - vt)));
     e.body.setAwake(true);
-    this.emit('thornHip', { x: p.x, y: p.y, egg: e, id: C.id, dir: s, hx: h.x, hy: h.y });
+    // 0.8.14: his thorny hide cracks what he rams (not stone, rock skin or the feather; Easy: never the breaking crack)
+    const hurt = !this.armored(e) && !e.chick && !(this.MD.softThorns && e.cracks >= 2);
+    if (hurt) { C.tokT = 1; this.crack(e, 0, 'thornback'); }
+    this.emit('thornHip', { x: p.x, y: p.y, egg: e, id: C.id, dir: s, hx: h.x, hy: h.y, hurt: hurt ? 1 : 0 });
   },
   // a spike, a wall or a ring thorn on either wall of channel c within da (rad) of world angle a, the way s
   thornSharpAhead(c, a, s, da) {

@@ -19,9 +19,9 @@ fs.mkdirSync(out, { recursive: true });
   // o.delay: his entry (s); o.real: the real level (else a copy with no gusts and no lightning, so nothing else moves)
   const start = (o = {}) => ev((o) => {
     globalThis.__eggDebug = 1;
-    const E = __egg, L = E.LEVELS.find((l) => l.id === 26);
+    const E = __egg, L = E.LEVELS.find((l) => l.id === 31);
     E.setSave({ mode: o.mode || 'medium', calm: false, seen: {}, strikeSeen: { freeze: 1, thunder: 1, bomb: 1, decoy: 1, tornado: 1, glue: 1 } });
-    if (o.real) E.start(25, { direct: true });
+    if (o.real) E.start(30, { direct: true });
     else {
       const D = { ...JSON.parse(JSON.stringify(L)), id: 990, chameleon: { ...L.chameleon, delay: o.delay ?? 0.5 } };
       delete D.gusts; delete D.weather;

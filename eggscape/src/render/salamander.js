@@ -11,7 +11,8 @@ import { drawVenom } from './v3art.js';
 import { statusClock, statusDraw, dizzyStars } from './status.js';
 import { spline, blinkAt } from './castkit.js';
 import { RING_TH, TAU } from '../sim/geom.js';
-import { SAL } from '../sim/salamander.js';
+import { SAL, BRAIN, FACE, SPIT, FIRE, LASH, DIVE } from '../sim/salamander.js';
+import { PERF } from '../perf.js';
 import { drawGecko15 } from './gecko15.js'; // L15: the frost gecko is a sim crawler too
 import { drawThorn20 } from './crystal20.js'; // L20: Duke Quartz and Spike, the thorn-backs
 import { drawCham26 } from './cham26.js'; // L26: Sly the chameleon
@@ -45,6 +46,10 @@ export const mixA = (a, b, k) => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1])
 export const rgb = (c, al = 1) => (al >= 1 ? `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})` : `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${al})`);
 export const palOf = (o) => { const r = {}; for (const k in o) r[k] = hex(o[k]); return r; };
 const HOT = palOf({ line: '#6e1c06', lo: '#c2330a', base: '#ff7414', hi: '#ffab2c', top: '#ffd45a', blot: '#3a1108', blotHi: '#6b2610', jaw: '#ffd872', leg: '#ee5f10', legLo: '#a52c08', pad: '#ffc04a', lid: '#e25a0e', eye: '#fff6d2', eyeLo: '#f0c26a', pupil: '#1a0803', mouth: '#4a0b12', throat: '#8a1c1a', tongue: '#ff7684', tooth: '#fff8e2' });
+// the frost salamander (0.8.14): the same animal in glacier blue
+const ICE = palOf({ line: '#12305e', lo: '#1d5fae', base: '#3d9cf0', hi: '#7cc8ff', top: '#d6f2ff', blot: '#102c60', blotHi: '#23529a', jaw: '#d8f0ff', leg: '#2f86dc', legLo: '#184e96', pad: '#bfe6ff', lid: '#2a7fd0', eye: '#f4fbff', eyeLo: '#a8d4f0', pupil: '#03101f', mouth: '#12244a', throat: '#2a4a8a', tongue: '#ff8fa8', tooth: '#ffffff' });
+// 0.8.18 white-hot (fire-up): the same animal, glowing; blotches become coals so its markings still read
+const WHITE = palOf({ line: '#8a2a08', lo: '#ffb43c', base: '#ffe48a', hi: '#fff4c4', top: '#fffbea', blot: '#e2410c', blotHi: '#ff8a2a', jaw: '#fff2c0', leg: '#ffc458', legLo: '#f08a1c', pad: '#fff0b8', lid: '#ffc860', eye: '#fffdf0', eyeLo: '#ffe6a0', pupil: '#3a1004', mouth: '#7a1a0c', throat: '#d8401a', tongue: '#ff8a7a', tooth: '#fffef6' });
 const ASH = palOf({ line: '#262220', lo: '#45413e', base: '#77726c', hi: '#989189', top: '#bdb7ae', blot: '#2c2927', blotHi: '#4a4643', jaw: '#aaa49b', leg: '#67625d', legLo: '#403c39', pad: '#b5afa6', lid: '#5d5853', eye: '#f3efe2', eyeLo: '#c9c3b4', pupil: '#141210', mouth: '#2e2327', throat: '#57474a', tongue: '#b9979c', tooth: '#eeeae0' });
 const bx = new Float64Array(NS), by = new Float64Array(NS), sx = new Float64Array(NS), sy = new Float64Array(NS), snx = new Float64Array(NS), sny = new Float64Array(NS), sw = new Float64Array(NS);
 const PT = { x: 0, y: 0, a: 0 }, Q = { x: 0, y: 0, nx: 0, ny: 0, w: 0 };
@@ -155,9 +160,9 @@ export function drawLegs(ctx, feet, U, K, lw, G = LEG_G) {
   }
 }
 
-function drawJet(ctx, x, y, a, k, U, t, len) {
+function drawJet(ctx, x, y, a, k, U, t, len, frost) {
   const reach = sstep(k * 1.6), L = len * U * (0.3 + 0.7 * reach), ca = Math.cos(a), sa = Math.sin(a), N = 12;
-  const layers = [['rgba(150,26,6,0.85)', 1.14, 1], ['#ff6a14', 0.92, 0.96], ['#ffc83a', 0.6, 0.86], ['#fff6c8', 0.3, 0.68]];
+  const layers = frost ? [['rgba(30,84,170,0.8)', 1.14, 1], ['#58b2ff', 0.92, 0.96], ['#bfe6ff', 0.6, 0.86], ['#ffffff', 0.3, 0.68]] : [['rgba(150,26,6,0.85)', 1.14, 1], ['#ff6a14', 0.92, 0.96], ['#ffc83a', 0.6, 0.86], ['#fff6c8', 0.3, 0.68]];
   for (let li = 0; li < layers.length; li++) {
     const [col, wk, lk] = layers[li];
     ctx.fillStyle = col; ctx.beginPath();
@@ -172,7 +177,7 @@ function drawJet(ctx, x, y, a, k, U, t, len) {
     ctx.closePath(); ctx.fill();
   }
   const tx = x + ca * L, ty = y + sa * L;
-  ctx.fillStyle = '#ffd860'; ctx.beginPath();
+  ctx.fillStyle = frost ? '#eaf7ff' : '#ffd860'; ctx.beginPath();
   for (let i = 0; i < 6; i++) {
     const f = (((t * 3.1 + i * 0.29) % 1) + 1) % 1, sd = i % 2 ? 1 : -1, d = f * 17 * U * reach, X = tx - sa * sd * d - ca * f * 6 * U, Y = ty + ca * sd * d - sa * f * 6 * U, r = 1.8 * U * (1 - f) * k;
     ctx.moveTo(X + r, Y); ctx.arc(X, Y, Math.max(0.3, r), 0, TAU);
@@ -190,6 +195,42 @@ function drawSteam(ctx, U, t, k) {
   }
 }
 
+// 0.8.18 white-hot: little flames lick up off the spine (screen up), tallest at the shoulders. Calm: steady flames; Low: four.
+function spineFlames(ctx, U, t, w, opts) {
+  const n = opts.low ? 4 : 7, calm = !!opts.calm;
+  for (let i = 0; i < n; i++) {
+    const u = 30 + (i * 96) / (n - 1), q = spInto(u, Q), taper = 1 - (u - 30) / 170;
+    const fl = calm ? 0.75 : 0.62 + 0.38 * Math.sin(t * 11 + i * 1.7) * Math.sin(t * 7.3 + i * 0.9);
+    const h = (10 + 12 * fl) * U * w * taper, bw = 4.4 * U * taper * (0.6 + 0.4 * w), sway = calm ? 0 : Math.sin(t * 6.1 + i * 2.3) * 2.2 * U;
+    for (const [col, k, al] of [['#ff6a14', 1, 0.85], ['#ffc83a', 0.66, 0.95], ['#fffbe0', 0.34, 1]]) {
+      ctx.globalAlpha = al * w;
+      ctx.fillStyle = col; ctx.beginPath();
+      ctx.moveTo(q.x - bw * k, q.y);
+      ctx.quadraticCurveTo(q.x - bw * k * 0.9 + sway * 0.4, q.y - h * k * 0.55, q.x + sway, q.y - h * (0.4 + 0.6 * k));
+      ctx.quadraticCurveTo(q.x + bw * k * 0.9 + sway * 0.4, q.y - h * k * 0.55, q.x + bw * k, q.y);
+      ctx.arc(q.x, q.y, bw * k, 0, Math.PI);
+      ctx.fill();
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+// 0.8.18 the ember spit's fuse: a spark runs up its back from the tail to the neck (f 0..1, the telegraph). Ahead of it the
+// fuse still to burn (a dotted cord); behind it a short glowing trail. When it reaches the neck, it spits.
+function fuseSpark(ctx, U, t, f, opts) {
+  const calm = !!opts.calm, us = lerp(166, 24, sstep(f)), line = (a, b) => { ctx.beginPath(); for (let u = a; u >= b; u -= 4) { const q = spInto(u, Q); ctx.lineTo(q.x, q.y); } const q = spInto(b, Q); ctx.lineTo(q.x, q.y); ctx.stroke(); };
+  ctx.save(); ctx.lineCap = 'round';
+  ctx.setLineDash([2.6 * U, 3.2 * U]); ctx.strokeStyle = 'rgba(60,16,4,0.75)'; ctx.lineWidth = 2.6 * U; line(us, 22);
+  ctx.strokeStyle = 'rgba(255,214,140,0.9)'; ctx.lineWidth = 1.2 * U; line(us, 22);
+  ctx.setLineDash([]);
+  for (let k = 0; k < 3; k++) { ctx.strokeStyle = `rgba(255,${150 + 40 * k},40,${0.25 + 0.25 * k})`; ctx.lineWidth = (5 - 1.5 * k) * U; line(Math.min(174, us + 26 - 8 * k), us); }
+  const q = spInto(us, Q), sx = q.x, sy = q.y, R = (calm ? 6.5 : 6 + 1.6 * Math.sin(t * 40)) * U;
+  if (!opts.low) { const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, R * 2.2); g.addColorStop(0, 'rgba(255,250,215,0.95)'); g.addColorStop(0.35, 'rgba(255,190,60,0.6)'); g.addColorStop(1, 'rgba(255,90,10,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(sx, sy, R * 2.2, 0, TAU); ctx.fill(); }
+  ctx.strokeStyle = '#fff3b0'; ctx.lineWidth = 1.3 * U;
+  for (let i = 0; i < 6; i++) { const a = i * (TAU / 6) + (calm ? 0.3 : t * 9), r0 = R * 0.45, r1 = R * (calm ? 1.25 : 1 + 0.5 * Math.abs(Math.sin(t * 23 + i))); ctx.beginPath(); ctx.moveTo(sx + Math.cos(a) * r0, sy + Math.sin(a) * r0); ctx.lineTo(sx + Math.cos(a) * r1, sy + Math.sin(a) * r1); ctx.stroke(); }
+  ctx.fillStyle = '#fffbe6'; ctx.beginPath(); ctx.arc(sx, sy, 2.3 * U, 0, TAU); ctx.fill();
+  ctx.restore();
+}
+
 function drawSal(ctx, x0, y0, s, t, opts) {
   const U = s / 100, pose = opts.pose || 'walk';
   const P = poseParams(pose, clamp(opts.p || 0, 0, 1));
@@ -202,11 +243,15 @@ function drawSal(ctx, x0, y0, s, t, opts) {
   const gait = (opts.gait || 0) / U;
   // palette: heat pushes the skin toward yellow-white, cooling drains it to ash
   const K = {}, heat = clamp((glow - 0.6) / 0.7, 0, 1), flick = 0.5 + 0.5 * Math.sin(t * 2.4);
-  for (const k in HOT) K[k] = cool > 0 ? mixA(HOT[k], ASH[k], cool) : HOT[k];
-  if (heat > 0 && cool < 1) {
+  const BASE = opts.frost ? ICE : HOT;
+  for (const k in BASE) K[k] = cool > 0 ? mixA(BASE[k], ASH[k], cool) : BASE[k];
+  if (heat > 0 && cool < 1 && !opts.frost) {
     const h = heat * (0.75 + 0.25 * flick) * (1 - cool);
     K.base = mixA(K.base, HOT.hi, 0.55 * h); K.hi = mixA(K.hi, HOT.top, 0.6 * h); K.top = mixA(K.top, [255, 246, 200], 0.6 * h); K.lo = mixA(K.lo, HOT.base, 0.4 * h); K.lid = mixA(K.lid, HOT.base, 0.4 * h);
   }
+  // 0.8.18 fire-up: WHITE-HOT. The skin goes yellow-white, the dark blotches turn to glowing red coals, the ink warms
+  const white = clamp(opts.white || 0, 0, 1) * (1 - cool);
+  if (white > 0 && !opts.frost) for (const k in WHITE) K[k] = mixA(K[k], WHITE[k], white * (k === 'line' || k === 'pupil' || k === 'mouth' ? 0.55 : 0.85));
   ctx.translate(x0, y0);
   ctx.lineJoin = 'round'; ctx.lineCap = 'round';
 
@@ -316,7 +361,11 @@ function drawSal(ctx, x0, y0, s, t, opts) {
   drawLegs(ctx, upFront ? feet.filter((f) => !f.L.front) : feet, U, K, lw);
 
   // ---- body: heat halo, dark belly edge, lit back, flame blotches, wet highlight
-  if (glow > 0.05) { bodyPath(1, 0, 0); ctx.strokeStyle = `rgba(255,110,24,${0.16 * glow})`; ctx.lineWidth = lw + 6 * U; ctx.stroke(); }
+  if (glow > 0.05) { bodyPath(1, 0, 0); ctx.strokeStyle = opts.frost ? `rgba(120,200,255,${0.2 * glow})` : `rgba(255,110,24,${0.16 * glow})`; ctx.lineWidth = lw + 6 * U; ctx.stroke(); }
+  if (white > 0.02) { // white-hot: a wide hot halo (two strokes: no gradient on the cheap path)
+    bodyPath(1, 0, 0); ctx.strokeStyle = `rgba(255,150,40,${0.22 * white})`; ctx.lineWidth = lw + 15 * U; ctx.stroke();
+    ctx.strokeStyle = `rgba(255,236,160,${0.3 * white})`; ctx.lineWidth = lw + 7 * U; ctx.stroke();
+  }
   bodyPath(1, 0, 0); ctx.fillStyle = rgb(K.lo); ctx.fill();
   ctx.save(); ctx.clip();
   bodyPath(0.84, LX * 3.2 * U, LY * 3.2 * U); ctx.fillStyle = rgb(K.base); ctx.fill();
@@ -341,6 +390,8 @@ function drawSal(ctx, x0, y0, s, t, opts) {
   }
   ctx.restore();
   bodyPath(1, 0, 0); ctx.strokeStyle = rgb(K.line); ctx.lineWidth = lw; ctx.stroke();
+  if (white > 0.05) spineFlames(ctx, U, t, white, opts);
+  if (opts.fuse > 0 && opts.fuse < 1) fuseSpark(ctx, U, t, opts.fuse, opts);
   if (upFront) drawLegs(ctx, feet.filter((f) => f.L.front), U, K, lw);
 
   // ---- head
@@ -353,7 +404,7 @@ function drawSal(ctx, x0, y0, s, t, opts) {
   const ca = Math.cos(ha), sa = Math.sin(ha);
   if (P.fire > 0.01) {
     const mx = hcx + ca * (16 + 6 * P.mouth) * hs, my = hcy + sa * (16 + 6 * P.mouth) * hs;
-    const tip = drawJet(ctx, mx, my, ha, P.fire, U, t, opts.fireLen || 60);
+    const tip = drawJet(ctx, mx, my, ha, P.fire, U, t, opts.fireLen || 60, opts.frost);
     if (opts.out) opts.out.fire = { x: tip.x + x0, y: tip.y + y0 };
   }
   if (hole) { ctx.restore(); drawPit(ctx, hole, U, t, false, opts.dive > 0 && opts.dive < UMAX * U ? 1 : 0); }
@@ -363,7 +414,9 @@ function drawSal(ctx, x0, y0, s, t, opts) {
 
 // The head, in its own space: +x = snout, units of hs (about 1.3 U). 34 long, 37 wide; puffs to 46 wide on the wind-up.
 function drawHead(ctx, t, opts, P, K, cool, lw, fu, ha, glow) {
-  const shock = sstep((cool - 0.25) / 0.5) * (1 - P.dazed), sq = P.swell;
+  // 0.8.18 faces: opts.expr {k: 'greedy' | 'smug' | 'sulk' | 'miff', a: 0..1}, opts.shock 0..1 (a splat, a dousing), opts.cheek 0..1 (the spit's glowing cheeks)
+  const X = opts.expr, xa = X ? clamp(X.a, 0, 1) : 0, greedy = X && X.k === 'greedy' ? xa : 0, smug = X && X.k === 'smug' ? xa : 0, sulk = X && X.k === 'sulk' ? xa : 0, miff = X && X.k === 'miff' ? xa : 0;
+  const shock = Math.max(sstep((cool - 0.25) / 0.5) * (1 - sulk), clamp(opts.shock || 0, 0, 1)) * (1 - P.dazed), sq = P.swell; // a sulk replaces the cooled stare
   const m = clamp(P.mouth * (1 - 0.92 * sq), 0, 1); // the mouth clamps shut while the cheeks fill
   const lx = LX * Math.cos(ha) + LY * Math.sin(ha), ly = -LX * Math.sin(ha) + LY * Math.cos(ha); // the light, in head space
   const fx = 19 - 4.5 * m, ck = 18.5 + 6.5 * sq + 1.2 * m, line = rgb(K.line);
@@ -379,7 +432,7 @@ function drawHead(ctx, t, opts, P, K, cool, lw, fu, ha, glow) {
     ctx.save();
     ctx.beginPath(); ctx.ellipse(jx - 0.6, 0, jrx - 2.4, jry - 2.6, 0, 0, TAU);
     const g = ctx.createRadialGradient(4, 0, 2, jx, 0, jrx);
-    g.addColorStop(0, rgb(mixA(K.throat, [255, 170, 60], 0.5 * P.fire + 0.35 * clamp(glow - 0.8, 0, 1)))); g.addColorStop(0.55, rgb(K.throat)); g.addColorStop(1, rgb(K.mouth));
+    g.addColorStop(0, rgb(mixA(K.throat, opts.frost ? [190, 232, 255] : [255, 170, 60], 0.5 * P.fire + 0.35 * clamp(glow - 0.8, 0, 1)))); g.addColorStop(0.55, rgb(K.throat)); g.addColorStop(1, rgb(K.mouth));
     ctx.fillStyle = g; ctx.fill(); ctx.clip();
     // the tongue: fat, pink, it lashes on a hiss
     const tk = P.tongue * (1 - P.dazed), wag = Math.sin(t * 19) * 3.2 * tk, tl = jx + jrx - 7 + 1.5 * tk;
@@ -402,18 +455,38 @@ function drawHead(ctx, t, opts, P, K, cool, lw, fu, ha, glow) {
     }
   }
   // ---- skull: lit form, pale muzzle, a dark flame down the crown
+  const cg = clamp(opts.cheek || 0, 0, 1);
+  if (cg > 0.02) { // the spit: the head glows like a coal round the ember it holds
+    const pu = opts.calm ? 1 : 0.9 + 0.1 * Math.sin(t * 17);
+    if (opts.low) { ctx.beginPath(); ctx.arc(-2, 0, 27 * pu, 0, TAU); ctx.fillStyle = `rgba(255,150,40,${0.28 * cg})`; ctx.fill(); }
+    else { const g = ctx.createRadialGradient(-2, 0, 8, -2, 0, 34 * pu); g.addColorStop(0, `rgba(255,190,70,${0.6 * cg})`); g.addColorStop(1, 'rgba(255,90,10,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(-2, 0, 34 * pu, 0, TAU); ctx.fill(); }
+  }
   ctx.save();
   headPath(); ctx.fillStyle = rgb(K.lo); ctx.fill(); ctx.clip();
   ctx.save(); ctx.translate(lx * 2.2, ly * 2.2); headPath(); ctx.fillStyle = rgb(K.base); ctx.fill(); ctx.restore();
   ctx.beginPath(); ctx.ellipse(1 + lx * 6, ly * 7, 14, 12.5 + 2 * sq, 0, 0, TAU); ctx.fillStyle = rgb(K.hi); ctx.fill();
   ctx.beginPath(); ctx.ellipse(fx - 3, 0, 8.5, 12.5, 0, 0, TAU); ctx.fillStyle = rgb(K.jaw, 0.7); ctx.fill(); // muzzle
   if (sq > 0.05) for (const sd of [-1, 1]) { ctx.beginPath(); ctx.ellipse(0.5, sd * (ck - 5.2), 6.5, 4.6, 0, 0, TAU); ctx.fillStyle = rgb(K.top, 0.85 * sq); ctx.fill(); } // stretched cheeks
+  if (cg > 0.02) { // the spit: an ember glows through the puffed cheeks (behind the eyes, where they swell) and the throat
+    ctx.beginPath(); ctx.ellipse(-5, 0, 11, 9, 0, 0, TAU); ctx.fillStyle = `rgba(255,140,30,${0.4 * cg})`; ctx.fill();
+    for (const sd of [-1, 1]) {
+      const pu = opts.calm ? 1 : 0.85 + 0.15 * Math.sin(t * 17 + sd);
+      ctx.beginPath(); ctx.ellipse(-6.5, sd * (ck - 4.6), 8 * pu, 6 * pu, 0, 0, TAU); ctx.fillStyle = `rgba(255,120,20,${0.6 * cg})`; ctx.fill();
+      ctx.beginPath(); ctx.ellipse(-6, sd * (ck - 4.8), 4.8 * pu, 3.4 * pu, 0, 0, TAU); ctx.fillStyle = `rgba(255,236,150,${0.95 * cg})`; ctx.fill();
+    }
+  }
+  if (smug > 0.05) for (const sd of [-1, 1]) { ctx.beginPath(); ctx.ellipse(-1, sd * 15.5, 4.2, 2.6, 0, 0, TAU); ctx.fillStyle = `rgba(255,130,90,${0.45 * smug})`; ctx.fill(); } // smug: a warm flush
   ctx.beginPath(); spline(ctx, [[-16, -7.2], [-8, -5.6], [-1, -3.4], [7.5, 0], [-1, 3.4], [-8, 5.6], [-16, 7.2]], true, 0.4); ctx.fillStyle = rgb(K.blot); ctx.fill();
   ctx.beginPath(); ctx.moveTo(-11 + lx * 2.5, ly * 2.5); ctx.lineTo(-3 + lx * 2.5, ly * 2.5); ctx.strokeStyle = rgb(K.blotHi); ctx.lineWidth = 1.5; ctx.stroke();
   ctx.beginPath(); ctx.ellipse(fx - 4.5 + lx * 2, ly * 4.5, 3.4, 1.5, Math.atan2(ly, lx) + Math.PI / 2, 0, TAU); ctx.fillStyle = rgb(mixA(K.top, [255, 255, 255], 0.6), 0.85); ctx.fill(); // wet snout
   ctx.restore();
   headPath(); ctx.strokeStyle = line; ctx.lineWidth = lw; ctx.stroke();
   ctx.fillStyle = rgb(K.line); for (const sd of [-1, 1]) { ctx.beginPath(); ctx.ellipse(fx - 2.3, sd * 3, 0.75, 1.15, sd * 0.5, 0, TAU); ctx.fill(); }
+  if (cg > 0.3 && !opts.calm) for (const sd of [-1, 1]) { // the spit: sparks and smoke curl out of the nostrils
+    const f = ((t * 2.2 + (sd > 0 ? 0.5 : 0)) % 1 + 1) % 1, X2 = fx + 1 + f * 9, Y2 = sd * (3 + f * 3.5);
+    ctx.fillStyle = `rgba(110,90,80,${0.55 * (1 - f) * cg})`; ctx.beginPath(); ctx.arc(X2 + 1.5, Y2 + sd * 1.2, 1.4 + 2.4 * f, 0, TAU); ctx.fill();
+    ctx.fillStyle = `rgba(255,214,90,${(1 - f) * cg})`; ctx.beginPath(); ctx.arc(X2, Y2, 1.5 * (1 - f) + 0.4, 0, TAU); ctx.fill();
+  }
 
   // ---- mouth, closed: smirk / pursed / shocked O
   ctx.strokeStyle = line;
@@ -425,9 +498,29 @@ function drawHead(ctx, t, opts, P, K, cool, lw, fu, ha, glow) {
     } else if (sq > 0.25) {
       ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(fx - 5.4, -4.4); ctx.quadraticCurveTo(fx - 2.6, -2.2, fx - 4.6, 0); ctx.quadraticCurveTo(fx - 2.6, 2.2, fx - 5.4, 4.4); ctx.stroke();
       ctx.lineWidth = 1; for (const sd of [-1, 1]) { ctx.beginPath(); ctx.moveTo(fx - 8, sd * 6.4); ctx.lineTo(fx - 5.6, sd * 7.6); ctx.stroke(); }
+    } else if (sulk > 0.3) { // the sulk: a pout, the lower lip pushed out, the corners dragged back
+      const s1 = fu;
+      ctx.strokeStyle = rgb(mixA(K.blot, K.line, 0.35)); ctx.lineWidth = 2; ctx.beginPath();
+      ctx.moveTo(1.5, -s1 * 13); ctx.bezierCurveTo(7, -s1 * 12.5, fx - 6.5, -s1 * 6.5, fx - 3.4, 0); ctx.bezierCurveTo(fx - 6.5, s1 * 6.5, 7, s1 * 12.5, 1.5, s1 * 13); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(fx - 3.6, s1 * 1.2, 2.4, 3.6, 0, 0, TAU); ctx.fillStyle = rgb(mixA(K.tongue, K.lo, 0.5)); ctx.fill(); ctx.lineWidth = 1.2; ctx.stroke();
+    } else if (miff > 0.3) { // miffed: a gritted grimace (a zigzag of teeth), two angry puffs from the nostrils
+      ctx.lineWidth = 1.7; ctx.beginPath(); ctx.moveTo(fx - 6, -6.5);
+      for (let i = 1; i <= 6; i++) ctx.lineTo(fx - 6 + (i % 2 ? 1.6 : 0), -6.5 + i * (13 / 6));
+      ctx.stroke();
+      if (!opts.calm) for (const sd of [-1, 1]) {
+        const f = ((t * 1.4 + (sd > 0 ? 0.5 : 0)) % 1 + 1) % 1, X2 = fx + 2 + f * 9, Y2 = sd * (3 + f * 4), r = 1.6 + f * 2.6;
+        ctx.fillStyle = `rgba(90,80,76,${0.7 * (1 - f) * miff})`; ctx.beginPath(); ctx.arc(X2, Y2, r, 0, TAU); ctx.arc(X2 + r * 0.7, Y2 + sd * r * 0.3, r * 0.7, 0, TAU); ctx.fill();
+      }
+    } else if (greedy > 0.3) { // greedy: a wide happy lip line and the tongue tip licking round the lips
+      const s1 = fu, lk = opts.calm ? 0.5 : 0.5 + 0.5 * Math.sin(t * 7);
+      ctx.strokeStyle = rgb(mixA(K.blot, K.line, 0.35)); ctx.lineWidth = 2; ctx.beginPath();
+      ctx.moveTo(4, -s1 * 14.2); ctx.bezierCurveTo(10, -s1 * 13, fx - 3.8, -s1 * 7.5, fx - 3.6, 0); ctx.bezierCurveTo(fx - 3.8, s1 * 7.5, 10, s1 * 13, 4, s1 * 14.2); ctx.stroke();
+      const ty = s1 * (-6 + 12 * lk), tx = fx - 2.2 + 2.5 * Math.sin(Math.PI * lk);
+      ctx.beginPath(); ctx.moveTo(fx - 5, ty * 0.6); ctx.quadraticCurveTo(fx - 1, ty, tx + 1.5, ty);
+      ctx.strokeStyle = line; ctx.lineWidth = 4.6 + 2 * lw; ctx.stroke(); ctx.strokeStyle = rgb(K.tongue); ctx.lineWidth = 4.6; ctx.stroke();
     } else {
       // the smirk: a lip line round the muzzle; one corner hooks back toward the eye, the other stays flat
-      const s1 = fu, grin = 0.5 + 0.5 * Math.sin(t * 0.8 + (opts.id | 0)) * 0.3;
+      const s1 = fu, grin = 0.5 + 0.5 * Math.sin(t * 0.8 + (opts.id | 0)) * 0.3 + 2.2 * smug; // smug: the corner hooks further back
       ctx.strokeStyle = rgb(mixA(K.blot, K.line, 0.35)); ctx.lineWidth = 2; ctx.beginPath();
       ctx.moveTo(6.5, -s1 * 12.6);
       ctx.bezierCurveTo(11, -s1 * 11.6, fx - 4.6, -s1 * 7, fx - 4.4, 0);
@@ -449,9 +542,12 @@ function drawHead(ctx, t, opts, P, K, cool, lw, fu, ha, glow) {
     const r = 7.1 + 0.7 * sq + 0.8 * shock, ex = 3, ey = sd * (11.6 + 1.6 * sq);
     const hi = sd === fu ? 1 : 0; // the smirk side keeps one brow cocked
     let lid = 0.36 - 0.06 * P.walk + 0.08 * P.angry - 0.2 * sq + (hi ? -0.1 : 0.05) * (1 - P.angry) * (1 - sq);
+    lid = lerp(lid, 0.02, greedy); lid = lerp(lid, 0.5, smug); lid = lerp(lid, sd === fu ? 0.64 : 0.56, sulk); lid = lerp(lid, 0.46, miff);
     lid = lerp(lid, 0.02, shock); lid = lerp(lid, sd === fu ? 0.62 : 0.4, P.dazed); lid = Math.max(lid, blink);
-    const th = lerp(lerp(0.22, 0.62, P.angry), -0.3, shock) * (1 - P.dazed);
-    lidEye(ctx, ex, ey, r, sd, { K, lx, ly, lw, lid, th, t, look, spin: P.dazed > 0.5, pr: r * lerp(0.6, 0.3, shock) * (1 - 0.12 * P.angry) * (1 + 0.1 * sq), heavy: P.angry });
+    let th = lerp(lerp(0.22, 0.62, P.angry), -0.3, shock) * (1 - P.dazed);
+    th = lerp(th, 0.04, smug); th = lerp(th, -0.34, sulk); th = lerp(th, 0.74, miff);
+    const lk = sulk > 0.05 ? { x: lerp(look.x, -0.55, sulk), y: lerp(look.y, -sd * 0.15 + 0.55, sulk) } : look; // the sulk looks down and away
+    lidEye(ctx, ex, ey, r, sd, { K, lx, ly, lw, lid, th, t, look: lk, spin: P.dazed > 0.5, pr: r * lerp(0.6, 0.3, shock) * (1 - 0.12 * P.angry) * (1 + 0.1 * sq) * (1 + 0.32 * greedy) * (1 - 0.2 * miff), heavy: Math.max(P.angry, miff), glint: greedy });
   }
 }
 // One heavy-lidded eye, in head space (+x = snout; sd = which side of the head). o: K palette, lx/ly light, lw, lid 0..1 (how far the
@@ -473,6 +569,7 @@ export function lidEye(ctx, ex, ey, r, sd, o) {
     if (o.slit !== undefined) ctx.ellipse(px, py, pr * 0.42, pr * 1.25, o.slit, 0, TAU); else ctx.arc(px, py, pr, 0, TAU);
     ctx.fillStyle = rgb(K.pupil); ctx.fill();
     ctx.beginPath(); ctx.arc(px + lx * pr * 0.42, py + ly * pr * 0.42, pr * 0.3, 0, TAU); ctx.fillStyle = '#fff'; ctx.fill();
+    if (o.glint > 0.05) { ctx.globalAlpha = o.glint; ctx.beginPath(); ctx.arc(px - lx * pr * 0.38, py - ly * pr * 0.38, pr * 0.16, 0, TAU); ctx.fill(); ctx.globalAlpha = 1; } // 0.8.18 greedy: a second glint
   }
   // the lid: covers the back of the eye up to a slanted edge (the brow line)
   const dx = Math.cos(th), dy = sd * Math.sin(th), h = -r + 2 * r * lid, cxl = ex + dx * h, cyl = ey + dy * h;
@@ -488,21 +585,23 @@ export function lidEye(ctx, ex, ey, r, sd, o) {
 }
 
 // ---------- red-hot sections and the breath's target mark
-export function drawSalHeat(ctx, sim, k, t) {
+export function drawSalHeat(ctx, sim, k, t, calm = false) {
   if (!sim.sals || !sim.sals.length) return;
+  drawPools(ctx, sim, t, calm); // 0.8.18 ember pools on the floors
   // the target: a dashed ember arc on the wall that grows hotter through the telegraph
   for (const C of sim.sals) {
     const warn = C.ph === 'warn' ? clamp(1 - C.t / C.dur, 0, 1) : C.ph === 'fire' ? 1 : -1;
     if (warn < 0) continue;
-    const T = sim.salTarget(C), ring = sim.rings[T.ri], half = (SAL.hotLen * C.size) / (2 * ring.r), pulse = 0.5 + 0.5 * Math.sin(t * (10 + 14 * warn));
+    const T = sim.salTarget(C), ring = sim.rings[T.ri], half = (sim.salHotLen ? sim.salHotLen(C) : SAL.hotLen * C.size) / (2 * ring.r), pulse = 0.5 + 0.5 * Math.sin(t * (10 + 14 * warn));
     ctx.save();
     ctx.lineCap = 'round';
-    ctx.strokeStyle = `rgba(255,110,30,${0.25 + 0.35 * warn * pulse})`;
+    const fr = C.kind === 'frost';
+    ctx.strokeStyle = fr ? `rgba(110,190,255,${0.25 + 0.35 * warn * pulse})` : `rgba(255,110,30,${0.25 + 0.35 * warn * pulse})`;
     ctx.lineWidth = RING_TH * (1.6 + 0.8 * warn);
     ctx.beginPath(); ctx.arc(0, 0, ring.r, T.a - half, T.a + half); ctx.stroke();
     ctx.setLineDash([0.12, 0.09]);
     ctx.lineDashOffset = -t * 0.6;
-    ctx.strokeStyle = `rgba(255,${200 - 80 * warn},80,${0.65 + 0.35 * warn})`;
+    ctx.strokeStyle = fr ? `rgba(${200 - 60 * warn},236,255,${0.65 + 0.35 * warn})` : `rgba(255,${200 - 80 * warn},80,${0.65 + 0.35 * warn})`;
     ctx.lineWidth = 0.045;
     for (const dr of [-1, 1]) { ctx.beginPath(); ctx.arc(0, 0, ring.r + dr * (RING_TH / 2 + 0.05), T.a - half, T.a + half); ctx.stroke(); }
     ctx.restore();
@@ -575,7 +674,7 @@ function poseOf(C) {
   if (sa === 'angry' || sa === 'strain') return { pose: 'hiss', p: 0.6 };
   const u = C.dur > 0 ? clamp(1 - C.t / C.dur, 0, 1) : 1;
   switch (C.ph) {
-    case 'walk': case 'brake': case 'retreat': return { pose: 'walk' };
+    case 'walk': case 'brake': case 'retreat': case 'turn': return { pose: 'walk' };
     case 'warn': return { pose: 'breath', p: 0.42 * u, aimAt: 'target' };
     case 'fire': return { pose: 'breath', p: 0.42 + 0.44 * u, aimAt: 'target' };
     case 'settle': return { pose: 'breath', p: 0.86 + 0.14 * u, aimAt: 'target' };
@@ -585,6 +684,30 @@ function poseOf(C) {
     case 'dive': return { pose: 'flee' };
     case 'grin': return { pose: 'idle', grin: 1 };
     case 'in': return { pose: 'idle' };
+    case 'coil': return { pose: 'bite', p: 0.8 * u, aimAt: 'egg' }; // (0.8.14) the bite: coil, eyes on the egg
+    // 0.8.19 the tongue: crouch low, throat glowing, eyes locked (lash); jaws wide as it flies (fling); braced, pulling (reel)
+    case 'lash': return u < 0.55 ? { pose: 'hiss', p: 0.35 + 0.65 * sstep(u / 0.55), aimAt: 'lash', throat: sstep(u) } : { pose: 'bite', p: 0.3 + 0.5 * sstep((u - 0.55) / 0.45), aimAt: 'lash', throat: 1 }; // 0.8.19 the wind-up: he rears back, throat swelling, then the jaws open on the egg
+    case 'fling': return { pose: 'bite', p: 0.9, aimAt: 'lash' };
+    case 'reel': return { pose: 'bite', p: 0.75, aimAt: 'lash', pull: 1 };
+    case 'strain': return { pose: 'hiss', p: 0.6, aimAt: 'lash', pull: 1, shake: 1 };
+    case 'stalk': return { pose: 'walk', aimAt: 'prey', low: 1 };
+    // 0.8.19 the dive and the boss's roar at the volcano
+    case 'sink': case 'under': case 'bubble': return { pose: 'flee' };
+    case 'rise': return { pose: 'hiss', p: 0.3 + 0.4 * (1 - u), aimAt: 'prey' };
+    case 'roar': return { pose: 'breath', p: 0.3 + 0.12 * sstep(u / 0.4), aimAt: 'volcano', roar: 1 };
+    // 0.8.18 the ember spit: rear, the cheeks fill and glow, the fuse burns up its back; then a pop of the jaws
+    case 'spitWarn': return { pose: 'breath', p: 0.39 * sstep(Math.min(1, u * 1.25)), aimAt: 'spit', fuse: u, cheek: sstep(u / 0.4) };
+    case 'spit': { const el = C.dur - C.t; return el < 0.16 ? { pose: 'breath', p: 0.5, aimAt: 'spit', pop: 1 - el / 0.16 } : { pose: 'idle', aimAt: 'spit' }; }
+    // fire-up: snatch the orb, then gulp it down (cheeks bulging), then the flare
+    case 'gulp': return u < 0.3 ? { pose: 'bite', p: 0.55 + 1.5 * u, aimAt: 'orb' } : { pose: 'chew', p: (u - 0.3) / 0.7 };
+    case 'chew': { const el = C.dur - C.t; return el < 0.2 ? { pose: 'bite', p: 0.8 + 0.2 * (el / 0.2) } : { pose: 'chew', p: clamp((el - 0.2) / 1.1, 0, 1) }; }
+    case 'miss': { const el = C.dur - C.t; return el < 0.2 ? { pose: 'bite', p: 0.8 + 0.2 * (el / 0.2) } : { pose: 'idle', miss: 1 }; }
+    case 'face': { // fire against frost: square up, breathe at each other, reel in the steam
+      const el = C.dur - C.t;
+      if (el < FACE.jet) return { pose: 'hiss', p: 0.12 + 0.6 * (el / FACE.jet), aimAt: 'face' };
+      if (el < FACE.burst) return { pose: 'breath', p: 0.36 + 0.44 * ((el - FACE.jet) / (FACE.burst - FACE.jet)), aimAt: 'face' };
+      return { pose: 'dazed' };
+    }
     case 'rival': {
       const el = C.dur - C.t;
       if (el < 1.3) return { pose: 'hiss', p: 0.12 + 0.6 * (el / 1.3), aimAt: 'snake' };
@@ -595,13 +718,29 @@ function poseOf(C) {
   return { pose: 'idle' };
 }
 
-export function drawSalamanders(ctx, sim, t, k) {
-  const after = [];
+// 0.8.19 the tongue reads over everything in play (the owner could not see it under the pickup labels): drawn with the
+// creatures, and once more, at the same place, after the labels (drawSalTop, from main.js's popup pass)
+const TOP = [];
+function topTongue(ctx, M, tip, k, t, calm, strain, after) {
+  after.push(() => { drawTongue(ctx, M, tip, k, t, calm, strain); TOP.push({ T: ctx.getTransform(), M, tip, k, t, calm, strain }); });
+}
+export function drawSalTop(ctx) {
+  for (const q of TOP) { ctx.save(); ctx.setTransform(q.T); drawTongue(ctx, q.M, q.tip, q.k, q.t, q.calm, q.strain); ctx.restore(); }
+  TOP.length = 0;
+}
+export function drawSalamanders(ctx, sim, t, k, calm = false) {
+  TOP.length = 0;
+  const after = [], low = PERF.low;
   for (const C of sim.sals || []) {
     if (C.sp === 'gecko') { drawGecko15(ctx, sim, k, t, false); continue; } // Baron von Brr (render/gecko15.js)
-    if (C.sp === 'thornback') { drawThorn20(ctx, sim, C, k, t); continue; } // L20 (render/crystal20.js)
-    if (C.sp === 'chameleon') { drawCham26(ctx, sim, C, k, t); continue; } // L26: Sly the orb thief (render/cham26.js)
+    if (C.sp === 'thornback') { drawThorn20(ctx, sim, C, k, t, calm); continue; } // L20 (render/crystal20.js)
+    if (C.sp === 'chameleon') { drawCham26(ctx, sim, C, k, t, calm); continue; } // L26: Sly the orb thief (render/cham26.js)
     if (C.ph === 'wait' || C.ph === 'gone' || C.pts.length < 3) continue;
+    if (C.ph === 'under' || C.ph === 'bubble') { // 0.8.19 in the lava: only the pools show (the exit one bubbles through the tell)
+      const P = sim.salDivePt(C), u = C.dur > 0 ? clamp(1 - C.t / C.dur, 0, 1) : 1;
+      after.push(() => drawDivePool(ctx, P.x, P.y, C.ph === 'bubble' ? 0.35 + 0.65 * sstep(u / 0.35) : 0.25, C.ph === 'bubble' ? u : -1, t, calm, low, C.kind));
+      continue;
+    }
     let R = ANIM.get(C.id);
     const fresh = !R || R.sim !== sim || t < R.t - 0.5;
     if (fresh) { R = { sim, A: crawlerAnim(), t, cool: C.cool > 0 ? 1 : 0, lookX: 1, lookY: 0, aim: 0, out: {} }; ANIM.set(C.id, R); }
@@ -609,7 +748,7 @@ export function drawSalamanders(ctx, sim, t, k) {
     R.t = t;
     const W = poseOf(C);
     // daze: frozen (a frost nova, a frost boss) holds the pose it was caught in, mid-stride; anything else is a stun (lightning also zaps first)
-    const st = statusClock(sim, 'c' + C.id, C.ph === 'daze' ? (C.dk === 'frost' ? { k: 'ice', left: C.t } : { k: 'stun', zap: C.dk === 'bolt', left: C.t }) : null, t);
+    const st = statusClock(sim, 'c' + C.id, C.ph === 'daze' ? (C.dk === 'frost' ? { k: 'ice', left: C.t } : { k: 'stun', zap: C.dk === 'bolt', left: C.t }) : C.ph === 'face' && C.dur - C.t >= FACE.burst ? { k: 'stun', left: C.t } : null, t);
     const frozen = st && st.k === 'ice';
     if (fresh) for (let i = 0; i < 12; i++) R.A.update(0.1, { pose: W.pose, p: W.p, speed: 0 }); // no blend-in on the first frame
     else if (!frozen) R.A.update(dt, { pose: W.pose, p: W.p, speed: 0 });
@@ -621,31 +760,70 @@ export function drawSalamanders(ctx, sim, t, k) {
     // aim the head (and the jet) at the target: the breath's spot on the wall, or the rival snake's head
     let aim = 0, fireLen = 44, tgt = null;
     if (W.aimAt === 'target') { const T = sim.salTarget(C); tgt = { x: T.x * k, y: -T.y * k }; }
+    else if (W.aimAt === 'egg') { const e = sim.eggs.find((x) => x.id === C.bj && x.alive && !x.saved); if (e) { const q = e.body.getPosition(); tgt = { x: q.x * k, y: -q.y * k }; } }
+    else if (W.aimAt === 'face') { const O = sim.sals.find((x) => x.id === C.fid); if (O && O.pts.length) { const a = C.pts[0], b = O.pts[0]; tgt = { x: (a.x + b.x) / 2 * k, y: -(a.y + b.y) / 2 * k }; } }
     else if (W.aimAt === 'snake') { const S = sim.snakes.find((x) => x.id === C.rid) || sim.snakes.find((x) => x.rivalId === C.id && x.rival > 0); if (S && S.pts.length) tgt = { x: S.pts[0].x * k, y: -S.pts[0].y * k }; }
+    else if (W.aimAt === 'spit') tgt = { x: C.sx * k, y: -C.sy * k }; // 0.8.18 the ember spit: eyes and snout on where it will land
+    else if (W.aimAt === 'lash' || W.aimAt === 'prey') { const e = sim.eggs.find((x) => x.id === (W.aimAt === 'lash' ? C.lj : C.ht) && x.alive && !x.saved); if (e) { const q = e.body.getPosition(); tgt = { x: q.x * k, y: -q.y * k }; } } // 0.8.19 eyes on its egg
+    else if (W.aimAt === 'volcano') { const V = sim.volcXY || (sim.volcOrigin && sim.volcOrigin()); if (V) tgt = { x: V.x * k, y: -V.y * k }; } // 0.8.19 the boss roars at the mountain
+    if (C.og && sim.salOrbWant) { const O = sim.salOrbWant(C); if (O) R.orb = { x: O.o.x * k, y: -O.o.y * k }; } // greedy: eyes on the flame orb
+    if (!tgt && (C.og || W.aimAt === 'orb') && R.orb) tgt = R.orb;
+    // the brain's alert: the head snaps round to the egg it just noticed (the "!" is drawn after, over every crawler)
+    const al = C.alT > 0 && !tgt ? alertEgg(sim, C) : null;
+    if (al) tgt = { x: al.x * k, y: -al.y * k };
     if (tgt) {
       const hip = at(82 * U), hd = at(13 * U), hb = at(25 * U);
       const fore = 0.22 * B.crouch + 0.26 * Math.sin(Math.PI * clamp(B.rear, 0, 1)) * (1 - B.crouch * 0.5), f = (82 - 13) / 82, c = 1 - f * fore + 0.07 * B.rear * f;
       const hc = { x: hip.x + (hd.x - hip.x) * c, y: hip.y + (hd.y - hip.y) * c };
       const base = Math.atan2(hd.y - hb.y, hd.x - hb.x), want = Math.atan2(tgt.y - hc.y, tgt.x - hc.x);
-      aim = clamp(wrapA(want - base), -1.15, 1.15);
+      aim = clamp(wrapA(want - base), W.aimAt === 'spit' ? -1.4 : -1.15, W.aimAt === 'spit' ? 1.4 : 1.15);
       const ha = base + aim, hs = (1.28 + 0.3 * B.rear) * U, m = (16 + 6 * B.mouth) * hs;
       fireLen = clamp(Math.hypot(tgt.x - (hc.x + Math.cos(ha) * m), tgt.y - (hc.y + Math.sin(ha) * m)) / U, 12, 90);
       if (W.puff) fireLen = Math.min(fireLen * 0.55, 26);
     }
-    R.aim += (aim - R.aim) * Math.min(1, dt * 10);
+    R.aim += (aim - R.aim) * Math.min(1, dt * (al ? 22 : 10));
     // eyes: toward the target, else ahead
     const lx = tgt ? 1 : 0.85, ly = tgt ? clamp(R.aim, -1, 1) : 0.15 * Math.sin(t * 0.7 + C.id);
     R.lookX += (lx - R.lookX) * Math.min(1, dt * 6); R.lookY += (ly - R.lookY) * Math.min(1, dt * 6);
     const glow = clamp(0.72 + 0.28 * (C.charge || 0) + (C.ph === 'walk' && C.next < 1.2 ? 0.15 * (1 - C.next / 1.2) : 0), 0, 1);
-    const alpha = C.ph === 'in' ? sstep(1 - C.t / C.dur) : 1;
+    const du = C.dur > 0 ? clamp(1 - C.t / C.dur, 0, 1) : 1, dg = DIVE.glow / DIVE.sink;
+    const alpha = C.ph === 'in' ? sstep(1 - C.t / C.dur) : C.ph === 'sink' ? 1 - sstep((du - dg) / (1 - dg)) : C.ph === 'rise' ? sstep(du / 0.7) : 1; // 0.8.19 into the lava and out
     const o = {
-      ...R.A.opts(), gait: C.odo * k, trail: at, id: 50 + C.id, glow, cool: R.cool, aim: R.aim, fireLen, look: { x: R.lookX, y: R.lookY }, out: R.out,
+      ...R.A.opts(), gait: C.odo * k, trail: at, id: 50 + C.id, glow, cool: R.cool, aim: R.aim, fireLen, look: { x: R.lookX, y: R.lookY }, out: R.out, frost: C.kind === 'frost',
     };
+    if (W.miss) o.blend = { ...o.blend, angry: 1, mouth: Math.max(o.blend.mouth, 0.15) }; // it snapped at air: a sour look
+    // ---- 0.8.18 the powers' looks: white-hot (eased in fast, out slowly; doused: out at once), the spit's fuse and cheeks,
+    // the faces (greedy at a flame orb, smug while white-hot, shocked then miffed when the ember splats, shocked then sulky when doused)
+    const wantW = C.wh > 0 ? 1 : 0;
+    if (R.white === undefined) R.white = wantW;
+    R.white = calm ? wantW : R.white + (wantW - R.white) * Math.min(1, dt * (wantW > R.white ? 7 : C.cool > 0 ? 10 : 2.5));
+    if (C.wh > 0 && !R.whOn) { R.whOn = 1; R.flareT = t; } else if (C.wh <= 0) R.whOn = 0;
+    if (C.sulk > 0 && !R.sulkOn) { R.sulkOn = 1; R.puffT = t; } else if (C.sulk <= 0) R.sulkOn = 0;
+    let ek = '', shock = 0;
+    if (C.sulk > 0) { ek = 'sulk'; shock = 1 - sstep((FIRE.sulk - C.sulk) / 0.4); }
+    else if (C.miff > 0) { ek = 'miff'; shock = 1 - sstep((SPIT.miff - C.miff) / 0.32); }
+    else if (C.og || C.ph === 'gulp') ek = 'greedy';
+    else if (C.wh > 0) ek = 'smug';
+    if (R.ek === undefined) { R.ek = ek; R.ea = ek ? 1 : 0; }
+    if (calm) { R.ek = ek; R.ea = ek ? 1 : 0; }
+    else if (ek !== R.ek) { R.ea = Math.max(0, R.ea - dt * 8); if (R.ea <= 0.01) R.ek = ek; }
+    else R.ea += ((ek ? 1 : 0) - R.ea) * Math.min(1, dt * 10);
+    o.white = R.white; o.calm = calm; o.low = low;
+    if (R.ek && R.ea > 0.01) o.expr = { k: R.ek, a: R.ea };
+    if (shock > 0) o.shock = shock;
+    if (W.fuse !== undefined) { o.fuse = W.fuse; o.cheek = W.cheek; o.glow = Math.max(o.glow, 0.8 + 0.2 * W.cheek); }
+    if (W.pop !== undefined || W.fuse !== undefined || C.ph === 'spit') o.blend = { ...o.blend, fire: 0, mouth: Math.max(W.pop ? 0.95 * W.pop : 0, W.fuse !== undefined ? 0 : o.blend.mouth * 0.5) };
     if (W.grin) { o.mouth = 0.32; }
+    if (al) { // startled: it rears a little, the cheeks flare and the brows drop, then it settles back into the walk
+      const u = 1 - C.alT / BRAIN.alert, f = Math.sin(Math.PI * clamp(u / 0.85, 0, 1));
+      o.blend = { ...o.blend, rear: Math.max(o.blend.rear, 0.3 * f), swell: Math.max(o.blend.swell, 0.8 * f), angry: Math.max(o.blend.angry, f), mouth: Math.max(o.blend.mouth, 0.25 * f) };
+    }
     if (C.ph === 'dive') o.dive = (C.odo - C.hole) * k;
-    // boss: the lava rocks come out of its mouth (mouth open, glowing) while it throws
-    const BX = sim.bx && sim.bx.boss;
-    if (C.boss && BX && BX.atk && (BX.atk.name === 'rock' || BX.atk.name === 'rock2') && C.ph === 'walk') o.mouth = BX.atk.ph === 'warn' ? 0.4 + 0.5 * clamp(1 - BX.atk.t / BX.atk.dur, 0, 1) : 0.9;
+    // 0.8.19: the lash's throat glow (the old spit's cheeks), a strain's shudder, the roar's open jaws
+    if (W.throat !== undefined) { o.cheek = W.throat; o.glow = Math.max(o.glow, 0.8 + 0.2 * W.throat); }
+    if (W.roar) o.blend = { ...o.blend, mouth: 0.85 + 0.1 * Math.sin(t * 9), angry: 1 };
+    if (W.pull) o.blend = { ...o.blend, angry: 1, mouth: Math.max(o.blend.mouth, 0.55) };
+    if (W.low) o.blend = { ...o.blend, crouch: Math.max(o.blend.crouch || 0, 0.45), angry: Math.max(o.blend.angry || 0, 0.6) };
     if (C.ph === 'in') { // it climbs out of a lava pool
       const h = P[0];
       pxSpace(ctx, 0, 0, k, () => {
@@ -658,6 +836,58 @@ export function drawSalamanders(ctx, sim, t, k) {
     ctx.globalAlpha = alpha;
     pxSpace(ctx, 0, 0, k, () => drawSalamander(ctx, P[0].x, P[0].y, s, frozen ? st.hold : t, { ...o, status: st }));
     ctx.restore();
+    if (R.flareT !== undefined && t - R.flareT < 0.75) { const u0 = (t - R.flareT) / 0.75; after.push(() => pxSpace(ctx, 0, 0, k, () => drawFlare(ctx, at, s, u0, calm, low))); }
+    if (R.puffT !== undefined && t - R.puffT < 1.3) { const u0 = (t - R.puffT) / 1.3, h = at(13 * U); after.push(() => pxSpace(ctx, 0, 0, k, () => drawPuff(ctx, h.x, h.y, s, u0, calm))); }
+    // 0.8.19 the dive: the pool it sinks into (glows first), the one it rises from
+    if (C.ph === 'sink' || C.ph === 'rise') {
+      const h = C.pts[0], P = C.ph === 'rise' ? sim.salDivePt(C) : { x: h.x, y: h.y };
+      after.push(() => drawDivePool(ctx, P.x, P.y, C.ph === 'sink' ? sstep(du / dg) * (1 - 0.3 * sstep((du - 0.7) / 0.3)) : 1 - sstep((du - 0.4) / 0.6), C.ph === 'rise' ? 1 : -1, t, calm, low, C.kind));
+    }
+    // 0.8.19 the tongue: a lock-on ring on the egg through the tell; the tongue flying, stuck, stretching (thinner, trembling)
+    if (C.ph === 'lash' || (C.ph === 'brake' && C.pend === 'lash')) {
+      const e = sim.eggs.find((x) => x.id === C.lj && x.alive && !x.saved), u = C.ph === 'lash' ? du : 0;
+      if (e) after.push(() => lockRing(ctx, e.body.getPosition(), u, t, calm));
+      // 0.8.19 the last of the wind-up: the sticky tip already peeks out of his open jaws, aimed at the egg
+      if (e && u > 0.6) { const M = sim.salMouth(C), q = e.body.getPosition(), d = Math.hypot(q.x - M.x, q.y - M.y) || 1, f = 0.22 * sstep((u - 0.6) / 0.4);
+        topTongue(ctx, M, { x: M.x + (q.x - M.x) / d * f, y: M.y + (q.y - M.y) / d * f }, 0, t, calm, false, after); }
+    }
+    if (C.ph === 'fling' || C.ph === 'reel' || C.ph === 'strain') {
+      const e = sim.eggs.find((x) => x.id === C.lj && x.alive && !x.saved), M = sim.salMouth(C);
+      if (e) {
+        const q = e.body.getPosition(), f = C.ph === 'fling' ? backOut(C.lk) : 1, tip = { x: M.x + (q.x - M.x) * f, y: M.y + (q.y - M.y) * f };
+        R.tg = { x: tip.x, y: tip.y, t };
+        topTongue(ctx, M, tip, C.ph === 'fling' ? 0 : C.ls, t, calm, C.ph === 'strain', after);
+      }
+    } else if (R.tg && t - R.tg.t < 0.18) { // snapped back: it flies home
+      const M = sim.salMouth(C), f = 1 - sstep((t - R.tg.t) / 0.18), tip = { x: M.x + (R.tg.x - M.x) * f, y: M.y + (R.tg.y - M.y) * f };
+      topTongue(ctx, M, tip, 0, t, calm, false, after);
+    }
+    // the bite's telegraph: a red ring closes on the egg it is about to snap at (0.8.14)
+    if (C.ph === 'coil') {
+      const e = sim.eggs.find((x) => x.id === C.bj && x.alive && !x.saved), u = C.dur > 0 ? clamp(1 - C.t / C.dur, 0, 1) : 1;
+      if (e) after.push(() => {
+        const q = e.body.getPosition(), r = 0.62 - 0.26 * sstep(u), fr = C.kind === 'frost';
+        ctx.save();
+        ctx.lineWidth = 0.05 + 0.03 * u; ctx.setLineDash([0.16, 0.1]); ctx.lineDashOffset = -t * 1.4;
+        ctx.strokeStyle = fr ? `rgba(120,200,255,${0.55 + 0.45 * u})` : `rgba(255,70,40,${0.55 + 0.45 * u})`;
+        ctx.beginPath(); ctx.arc(q.x, q.y, r, 0, TAU); ctx.stroke();
+        ctx.restore();
+      });
+    }
+    // fire against frost: the two jets meet in a ball of steam between them (drawn once, by the fire one)
+    if (C.ph === 'face' && C.kind !== 'frost') {
+      const O = sim.sals.find((x) => x.id === C.fid), el = C.dur - C.t;
+      if (O && O.pts.length && el > FACE.jet) after.push(() => {
+        const a = C.pts[0], b = O.pts[0], mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2, g = sstep((el - FACE.jet) / 0.5), end = sstep((el - FACE.burst) / 0.5);
+        pxSpace(ctx, mx, my, k, () => {
+          for (let i = 0; i < 7; i++) {
+            const f = (((t * 0.9 + i * 0.37) % 1) + 1) % 1, an = i * 2.4 + t * 0.6, rr = (0.1 + 0.34 * f + 0.3 * end) * k, x = Math.cos(an) * rr * 0.8, y = Math.sin(an) * rr * 0.6 - f * 0.25 * k - end * 0.2 * k;
+            ctx.fillStyle = `rgba(240,247,255,${0.6 * g * (1 - f * 0.7) * (1 - 0.6 * end)})`;
+            ctx.beginPath(); ctx.arc(x, y, (0.12 + 0.12 * f + 0.1 * end) * k, 0, TAU); ctx.fill();
+          }
+        });
+      });
+    }
     // a face-off: the snake's venom in flight at it
     if (C.ph === 'rival') {
       const el = C.dur - C.t, S = sim.snakes.find((x) => x.id === C.rid);
@@ -670,5 +900,164 @@ export function drawSalamanders(ctx, sim, t, k) {
       });
     }
   }
+  for (const E of sim.salEmbers || []) after.push(() => pxSpace(ctx, 0, 0, k, () => drawEmberFly(ctx, E, k, t, calm, low))); // 0.8.18 embers in flight
   for (const f of after) f();
+  for (const C of sim.sals || []) if (C.alT > 0 && C.pts.length > 2 && C.ph !== 'wait' && C.ph !== 'gone') drawAlertMark(ctx, C, k);
+}
+// ---------- 0.8.19 the tongue lash and the lava dive (world space, y up)
+// the tongue: a thick, glossy, slightly sagging strap from the mouth to the tip, a sticky pad on the end. Stretched (k 0..1)
+// it thins and trembles; straining at a stone egg it shudders. Calm: no tremble.
+function drawTongue(ctx, M, tip, k, t, calm, strain) {
+  const dx = tip.x - M.x, dy = tip.y - M.y, L = Math.hypot(dx, dy);
+  if (L < 0.02) return;
+  const nx = -dy / L, ny = dx / L, tr = calm ? 0 : (0.025 * k + (strain ? 0.03 : 0)) * Math.sin(t * 55), sag = 0.12 * (1 - k) * Math.min(1, L / 1.2);
+  // 0.8.19 thick and bright at any zoom: never under ~7.5 CSS px across (plus a ~2.5 px dark outline), the owner's phone
+  const T = ctx.getTransform(), px = Math.max(1e-6, Math.hypot(T.a, T.b) / ((typeof devicePixelRatio === 'number' && devicePixelRatio) || 1)); // CSS px per m
+  const cx = M.x + dx * 0.5 + nx * (tr - sag), cy = M.y + dy * 0.5 + ny * (tr - sag) - sag * 0.6, w = Math.max(0.14 * (1 - 0.3 * k), 7.5 / px), ol = Math.max(0.05, 5 / px);
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = '#4a0614'; ctx.lineWidth = w + ol;
+  ctx.beginPath(); ctx.moveTo(M.x, M.y); ctx.quadraticCurveTo(cx, cy, tip.x, tip.y); ctx.stroke();
+  ctx.strokeStyle = k > 0.6 && !calm ? `rgb(255,${70 - 30 * k},${100 - 40 * k})` : '#ff3d6e'; ctx.lineWidth = w;
+  ctx.beginPath(); ctx.moveTo(M.x, M.y); ctx.quadraticCurveTo(cx, cy, tip.x, tip.y); ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,190,205,0.75)'; ctx.lineWidth = w * 0.28;
+  ctx.beginPath(); ctx.moveTo(M.x + nx * w * 0.2, M.y + ny * w * 0.2); ctx.quadraticCurveTo(cx + nx * w * 0.2, cy + ny * w * 0.2, tip.x + nx * w * 0.2, tip.y + ny * w * 0.2); ctx.stroke();
+  const tw = Math.max(0.15, w * 1.25), th = tw * 0.78, ta = Math.atan2(dy, dx); // the sticky pad: a fat blob with a dark rim and a wet glint
+  ctx.fillStyle = '#4a0614'; ctx.beginPath(); ctx.ellipse(tip.x, tip.y, tw + ol / 2, th + ol / 2, ta, 0, TAU); ctx.fill();
+  ctx.fillStyle = '#ff3d6e'; ctx.beginPath(); ctx.ellipse(tip.x, tip.y, tw, th, ta, 0, TAU); ctx.fill();
+  ctx.fillStyle = 'rgba(255,215,228,0.9)'; ctx.beginPath(); ctx.arc(tip.x - nx * th * 0.3 - dx / L * tw * 0.2, tip.y - ny * th * 0.3 - dy / L * tw * 0.2, th * 0.32, 0, TAU); ctx.fill();
+  ctx.restore();
+}
+// the lock-on: two arcs close on the egg and spin the other way as the tell runs out
+function lockRing(ctx, q, u, t, calm) {
+  const r = 0.62 - 0.22 * sstep(u), a0 = calm ? 0 : t * 3;
+  ctx.save();
+  ctx.lineCap = 'round'; ctx.lineWidth = 0.05 + 0.03 * u; ctx.strokeStyle = `rgba(255,80,110,${0.55 + 0.45 * u})`;
+  for (let j = 0; j < 2; j++) { ctx.beginPath(); ctx.arc(q.x, q.y, r, a0 + j * Math.PI, a0 + j * Math.PI + 1.9); ctx.stroke(); }
+  ctx.restore();
+}
+// a lava pool on the floor: a glowing ellipse; bubbling (b 0..1 through the exit tell, -1 none) it heaves and pops
+function drawDivePool(ctx, x, y, s, b, t, calm, low, kind) {
+  if (s <= 0.01) return;
+  const a = Math.atan2(y, x), rx = 0.55 * s, ry = 0.2 * s;
+  ctx.save();
+  ctx.translate(x, y); ctx.rotate(a + Math.PI / 2);
+  const g = ctx.createRadialGradient(0, 0, 0, 0, 0, rx * 1.6);
+  g.addColorStop(0, 'rgba(255,236,150,0.95)'); g.addColorStop(0.45, 'rgba(255,120,30,0.85)'); g.addColorStop(1, 'rgba(160,30,0,0)');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(0, 0, rx * 1.6, ry * 2.2, 0, 0, TAU); ctx.fill();
+  ctx.fillStyle = '#ff7a1a'; ctx.beginPath(); ctx.ellipse(0, 0, rx, ry, 0, 0, TAU); ctx.fill();
+  ctx.fillStyle = '#ffd36a'; ctx.beginPath(); ctx.ellipse(0, 0, rx * 0.62, ry * 0.55, 0, 0, TAU); ctx.fill();
+  if (b >= 0) { // bubbles rise and pop, faster as the tell runs out
+    const n = low ? 3 : 6, sp = calm ? 0 : 1 + 2.5 * b;
+    for (let i = 0; i < n; i++) {
+      const ph = calm ? 0.5 : ((t * sp + i * 0.37) % 1 + 1) % 1, bx = (((i * 0.61) % 1) - 0.5) * rx * 1.4, by = ph * 0.35 * s, br = 0.05 * s * (0.6 + ph) * (1 - (ph > 0.85 ? (ph - 0.85) / 0.15 : 0));
+      ctx.fillStyle = `rgba(255,${190 - 80 * ph},60,${0.9 - 0.4 * ph})`; ctx.beginPath(); ctx.arc(bx, by, Math.max(0.005, br), 0, TAU); ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+// ---------- 0.8.18 the powers' pictures
+const backOut = (u) => { u = clamp(u, 0, 1); const c = 1.7; return 1 + (c + 1) * Math.pow(u - 1, 3) + c * Math.pow(u - 1, 2); };
+// an ember in flight (px space, y down): on its straight line (the one the gaps are checked on), lifted a little and
+// swelling mid-flight so it reads as a lob, a short trail of sparks behind
+function drawEmberFly(ctx, E, k, t, calm, low) {
+  const pos = (u) => ({ x: (E.x0 + (E.x1 - E.x0) * u) * k, y: -(E.y0 + (E.y1 - E.y0) * u) * k - 0.16 * Math.sin(Math.PI * u) * k });
+  const u = clamp(E.u, 0, 1), q = pos(u), r = (0.08 + 0.05 * Math.sin(Math.PI * u)) * k;
+  for (let j = 3; j >= 1; j--) { const p = pos(Math.max(0, u - 0.05 * j)); ctx.fillStyle = `rgba(255,${150 - 20 * j},40,${0.55 - 0.13 * j})`; ctx.beginPath(); ctx.arc(p.x, p.y, r * (1 - 0.2 * j), 0, TAU); ctx.fill(); }
+  if (!low) { const g = ctx.createRadialGradient(q.x, q.y, 0, q.x, q.y, r * 2.8); g.addColorStop(0, 'rgba(255,220,120,0.55)'); g.addColorStop(1, 'rgba(255,90,10,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(q.x, q.y, r * 2.8, 0, TAU); ctx.fill(); }
+  drawEmberBall(ctx, q.x, q.y, r, t, calm);
+}
+// the ember itself (px space): a molten ball with tumbling dark crust flecks (also the level card's harm beat, howto.js)
+export function drawEmberBall(ctx, x, y, r, t, calm) {
+  ctx.fillStyle = '#c3360a'; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill();
+  ctx.fillStyle = '#ffa42a'; ctx.beginPath(); ctx.arc(x - r * 0.15, y - r * 0.18, r * 0.72, 0, TAU); ctx.fill();
+  ctx.fillStyle = '#fff4c8'; ctx.beginPath(); ctx.arc(x - r * 0.25, y - r * 0.28, r * 0.34, 0, TAU); ctx.fill();
+  ctx.strokeStyle = '#5a1606'; ctx.lineWidth = Math.max(1, r * 0.16); ctx.lineCap = 'round';
+  for (let i = 0; i < 3; i++) { const a = i * 2.1 + (calm ? 0.4 : t * 6); ctx.beginPath(); ctx.arc(x, y, r * 0.82, a, a + 0.55); ctx.stroke(); } // dark crust flecks tumbling
+  ctx.lineWidth = Math.max(1, r * 0.12); ctx.strokeStyle = '#4a1206'; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.stroke();
+}
+// the fire-up flare round the body (px space): a hot disc, a ring and rays that burst out and fade. Calm: the soft disc only.
+function drawFlare(ctx, at, s, u, calm, low) {
+  const c = at(0.62 * s), R = s * (0.45 + 1.0 * sstep(u)), f = 1 - sstep(u);
+  ctx.save();
+  if (!low) { const g = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, R * 1.2); g.addColorStop(0, `rgba(255,248,210,${(calm ? 0.3 : 0.6) * f})`); g.addColorStop(0.5, `rgba(255,170,50,${(calm ? 0.15 : 0.35) * f})`); g.addColorStop(1, 'rgba(255,90,10,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(c.x, c.y, R * 1.2, 0, TAU); ctx.fill(); }
+  if (!calm) {
+    ctx.strokeStyle = `rgba(255,236,150,${0.9 * f})`; ctx.lineWidth = Math.max(1.5, s * 0.05 * f); ctx.beginPath(); ctx.arc(c.x, c.y, R, 0, TAU); ctx.stroke();
+    ctx.lineCap = 'round'; ctx.strokeStyle = `rgba(255,250,220,${f})`; ctx.lineWidth = Math.max(1.2, s * 0.035);
+    for (let i = 0; i < 10; i++) { const a = i * (TAU / 10) + 0.2, r0 = R * 0.55, r1 = R * (0.8 + 0.12 * (i % 2)); ctx.beginPath(); ctx.moveTo(c.x + Math.cos(a) * r0, c.y + Math.sin(a) * r0); ctx.lineTo(c.x + Math.cos(a) * r1, c.y + Math.sin(a) * r1); ctx.stroke(); }
+  }
+  ctx.restore();
+}
+// doused while white-hot: a comic cloud of steam bursts off its head and drifts up. Calm: it only fades.
+function drawPuff(ctx, x, y, s, u, calm) {
+  const sz = s * (calm ? 0.3 : 0.16 + 0.16 * backOut(Math.min(1, u * 2.2))), cy = y - s * (0.28 + (calm ? 0.1 : 0.32 * sstep(u))), al = 1 - sstep((u - 0.55) / 0.45);
+  const B = [[0, 0, 1], [-0.85, 0.25, 0.72], [0.85, 0.22, 0.75], [-0.4, -0.55, 0.7], [0.45, -0.5, 0.66]];
+  ctx.save(); ctx.globalAlpha = al;
+  ctx.fillStyle = 'rgba(110,122,134,0.55)'; for (const [dx, dy, r] of B) { ctx.beginPath(); ctx.arc(x + dx * sz, cy + dy * sz, r * sz + Math.max(1.5, sz * 0.09), 0, TAU); ctx.fill(); }
+  ctx.fillStyle = '#f5f8fb'; for (const [dx, dy, r] of B) { ctx.beginPath(); ctx.arc(x + dx * sz, cy + dy * sz, r * sz, 0, TAU); ctx.fill(); }
+  ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(x - 0.3 * sz, cy - 0.25 * sz, 0.35 * sz, 0, TAU); ctx.fill();
+  ctx.restore();
+}
+// ember pools on the floors (world space, metres, y up): a molten blob lying on the wall it landed on, riding the ring,
+// bubbling; then it cools to a dark crust with dying orange cracks, and crumbles away. Calm: no popping; Low: flat fills.
+function drawPools(ctx, sim, t, calm) {
+  if (!sim.salPools || !sim.salPools.length) return;
+  const low = PERF.low, T0 = SPIT.pool + SPIT.crust;
+  for (const P of sim.salPools) {
+    const ring = sim.rings[P.ri];
+    if (!ring) continue;
+    const a = ring.body.getAngle() + P.la, side = P.ri === P.ch - 1 ? 1 : -1, r0 = ring.r + side * (RING_TH / 2 - 0.01), age = T0 - P.t;
+    const grow = calm ? 1 : backOut(age / 0.28), ang = P.half * Math.max(0.05, grow), cool = P.t <= SPIT.crust ? 1 - P.t / SPIT.crust : 0, fade = Math.min(1, (P.t - SPIT.crust) / 0.8);
+    const blob = (k, thick) => { // the blob's outline at k x its size: flat on the wall, domed into the channel
+      ctx.beginPath();
+      const N = 14;
+      for (let i = 0; i <= N; i++) { const f = i / N, aa = a - ang * k + 2 * ang * k * f, r = r0 + side * thick * k * Math.pow(Math.sin(Math.PI * f), 0.55); ctx.lineTo(r * Math.cos(aa), r * Math.sin(aa)); }
+      for (let i = N; i >= 0; i--) { const f = i / N, aa = a - ang * k + 2 * ang * k * f; ctx.lineTo(r0 * Math.cos(aa), r0 * Math.sin(aa)); }
+      ctx.closePath();
+    };
+    ctx.save();
+    if (cool <= 0) { // burning
+      if (!low) { ctx.strokeStyle = `rgba(255,90,20,${0.3 * fade})`; ctx.lineWidth = 0.28; ctx.lineCap = 'round'; ctx.beginPath(); ctx.arc(0, 0, r0 + side * 0.05, a - ang * 1.1, a + ang * 1.1); ctx.stroke(); }
+      blob(1.06, 0.15); ctx.fillStyle = '#5a1606'; ctx.fill();
+      blob(1, 0.14); ctx.fillStyle = rgb(mixA([150, 40, 10], [232, 66, 12], fade)); ctx.fill();
+      blob(0.72, 0.1); ctx.fillStyle = rgb(mixA([190, 70, 20], [255, 154, 36], fade)); ctx.fill();
+      blob(0.38, 0.06); ctx.fillStyle = `rgba(255,236,150,${0.95 * fade})`; ctx.fill();
+      if (!low) for (let i = 0; i < 3; i++) { // bubbles swell and pop
+        const c = calm ? 0.45 : (((t * 0.95 + i * 0.37 + P.k * 0.21) % 1) + 1) % 1, f = 0.25 + 0.25 * i, aa = a - ang + 2 * ang * f, rr = r0 + side * 0.07, bx = rr * Math.cos(aa), by = rr * Math.sin(aa);
+        if (c < 0.85) { const br = 0.018 + 0.03 * c; ctx.fillStyle = `rgba(255,210,110,${0.9 * fade})`; ctx.beginPath(); ctx.arc(bx, by, br, 0, TAU); ctx.fill(); ctx.strokeStyle = `rgba(120,30,6,${0.7 * fade})`; ctx.lineWidth = 0.008; ctx.stroke(); }
+        else { const q = (c - 0.85) / 0.15; ctx.strokeStyle = `rgba(255,230,150,${(1 - q) * fade})`; ctx.lineWidth = 0.012; ctx.beginPath(); ctx.arc(bx, by, 0.045 + 0.04 * q, 0, TAU); ctx.stroke(); }
+      }
+    } else { // the crust: dark, its cracks dying; at the end it crumbles off the wall
+      const crumble = sstep((cool - 0.6) / 0.4);
+      if (crumble < 0.02) {
+        blob(1, 0.12); ctx.fillStyle = rgb(mixA([120, 40, 16], [58, 42, 36], sstep(cool * 1.6))); ctx.fill();
+        ctx.strokeStyle = `rgba(255,140,40,${0.85 * (1 - sstep(cool / 0.7))})`; ctx.lineWidth = 0.014;
+        for (const f of [0.3, 0.55, 0.75]) { const aa = a - ang + 2 * ang * f; ctx.beginPath(); ctx.moveTo(r0 * Math.cos(aa), r0 * Math.sin(aa)); const r = r0 + side * 0.09, ab = aa + 0.12 * ang; ctx.lineTo(r * Math.cos(ab), r * Math.sin(ab)); ctx.stroke(); }
+      } else for (let i = 0; i < 5; i++) { // chunks fall away (down the screen) and shrink
+        const f = 0.1 + 0.2 * i, aa = a - ang + 2 * ang * f, rr = r0 + side * 0.05, drop = 0.25 * crumble * crumble * (0.7 + 0.3 * (i % 2)), sz = 0.045 * (1 - crumble * 0.8);
+        ctx.fillStyle = `rgba(62,46,40,${1 - crumble * 0.85})`; ctx.beginPath(); ctx.arc(rr * Math.cos(aa) + (i - 2) * 0.01 * crumble, rr * Math.sin(aa) - drop, sz, 0, TAU); ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
+}
+// the egg a crawler has just noticed (its position), or null
+function alertEgg(sim, C) {
+  const e = C.ht >= 0 ? sim.eggs.find((x) => x.id === C.ht && x.alive && !x.saved) : null;
+  return e ? e.body.getPosition() : null;
+}
+// the "!" over a crawler that has just noticed an egg: it pops up over the head, holds, and fades
+function drawAlertMark(ctx, C, k) {
+  const u = 1 - C.alT / BRAIN.alert, h = C.pts[Math.min(C.pts.length - 1, Math.round((0.2 * SAL.svl * C.size) / SAL.trail))], pop = u < 0.18 ? sstep(u / 0.18) * (1 + 0.25 * Math.sin(Math.PI * u / 0.18)) : 1, fade = 1 - sstep((u - 0.7) / 0.3);
+  const s = 0.34 * k * pop, x = h.x * k, y = -h.y * k - (0.62 + 0.12 * sstep(u / 0.3)) * k;
+  if (!(s > 0.5) || fade <= 0) return;
+  ctx.save();
+  ctx.globalAlpha *= fade;
+  ctx.scale(1 / k, -1 / k); ctx.translate(x, y); // px, y down (the world ctx is y up)
+  ctx.beginPath(); ctx.arc(0, 0, s, 0, TAU); ctx.fillStyle = '#fff6d6'; ctx.fill();
+  ctx.lineWidth = Math.max(1.5, s * 0.14); ctx.strokeStyle = '#5a1a08'; ctx.stroke();
+  ctx.fillStyle = '#d2340c';
+  ctx.beginPath(); ctx.moveTo(-s * 0.17, -s * 0.66); ctx.lineTo(s * 0.17, -s * 0.66); ctx.lineTo(s * 0.09, s * 0.22); ctx.lineTo(-s * 0.09, s * 0.22); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.arc(0, s * 0.5, s * 0.14, 0, TAU); ctx.fill();
+  ctx.restore();
 }

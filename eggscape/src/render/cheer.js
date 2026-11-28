@@ -298,6 +298,49 @@ R.encourage = {
   },
 };
 
+// 1 star (2026-11-15): she takes care of her eggs. Three eggs roll in to her feet, she counts them with little nods (a
+// star on each), fluffs up and settles over them under spread wings, and a heart floats up. Calm and warm, not a party.
+const NEST = { roll: [0.3, 0.42, 0.54], count: [0.98, 1.26, 1.54], settle: 1.75 };
+const NEST_X = [-34, 0, 34];
+R.nest = {
+  len: 2.4, stars: NEST.count, face: -1, hold: 'brood',
+  cues: [[0.52, 'hen_land', { intensity: 0 }], [0.98, 'cluck', { intensity: 0 }], [1.26, 'cluck', { intensity: 0 }], [1.54, 'cluck', { intensity: 0 }],
+    [1.8, 'flap', { intensity: 0 }], [2.15, 'tada', { intensity: 0.2 }]],
+  fx: [{ at: 2.0, n: 12, from: 'top' }],
+  pose(u) {
+    const P = henPose({ blush: 0.6 });
+    happy(P, ss(0, 0.3, u), 1.5);
+    const watch = env(u, 0.25, 0.4, 0.75, 0.9); // she watches them come
+    P.eHappy = lerp(P.eHappy, 0, watch); P.pdy += 1.4 * watch; P.hr += 0.2 * watch;
+    NEST.count.forEach((b, i) => { // a nod at each egg: head dips toward it
+      const n = env(u, b - 0.12, b - 0.04, b + 0.04, b + 0.14);
+      P.hr += 0.35 * n; P.hy += 4 * n; P.hx += (i - 1) * 3 * n; cluck(P, u, b, 3);
+    });
+    const fl = env(u, NEST.settle - 0.05, NEST.settle + 0.05, NEST.settle + 0.15, NEST.settle + 0.3); // a fluff-up
+    P.puff += 0.08 * fl; P.tufts = Math.max(P.tufts || 0, fl);
+    const sit = ss(NEST.settle + 0.1, NEST.settle + 0.4, u); // settle down over them, wings spread wide and low
+    P.lift -= 9 * sit; P.sq -= 0.06 * sit; P.puff += 0.06 * sit;
+    wings(P, 0.75, 0.8, 1, sit);
+    happy(P, sit, 1); P.eHappy = lerp(P.eHappy, 1, sit); P.hr -= 0.08 * sit;
+    return P;
+  },
+  props(ctx, u, pw, front) {
+    if (!front) return;
+    const sit = ss(NEST.settle + 0.1, NEST.settle + 0.4, u);
+    NEST_X.forEach((hx, i) => {
+      const t0 = NEST.roll[i], a = ss(t0, t0 + 0.4, u);
+      if (u < t0) return;
+      const from = (i - 1 || -1) * 150, x = lerp(from, hx * (1 - 0.35 * sit), a);
+      let y = 39, rot = (1 - a) * (from < 0 ? 1 : -1) * 6;
+      const nod = env(u, NEST.count[i] - 0.06, NEST.count[i], NEST.count[i] + 0.05, NEST.count[i] + 0.2); // it hops when counted
+      y -= 9 * nod; rot += Math.sin(u * 30) * 0.12 * nod;
+      if (u > NEST.settle + 0.5) rot += Math.sin(u * 2.4 + i * 2) * 0.06; // snug, a little wobble
+      ctx.save(); ctx.globalAlpha *= 1 - 0.25 * sit; egg(ctx, x, y + 3 * sit, 19, rot); ctx.restore();
+    });
+  },
+  heart: [2.0],
+};
+
 // the final hold: the routine's last pose kept alive
 function hold(name, P, v) {
   breathe(P, v);
@@ -308,6 +351,7 @@ function hold(name, P, v) {
   else if (R0.hold === 'balance') { P.hr += Math.sin(v * 2.3) * 0.05; P.dx += Math.sin(v * 2.3 + 1) * 1.2; }
   else if (R0.hold === 'hug') P.hy += Math.sin(v * 3.4) * 0.8;
   else if (R0.hold === 'proud') { P.hy += Math.sin(v * 2.2) * 0.8; }
+  else if (R0.hold === 'brood') { P.hy += Math.sin(v * 1.8) * 0.9; P.hr += Math.sin(v * 0.9) * 0.05; }
   else if (R0.hold === 'cheerOn') { bounce(P, w, 1.4, 3.5); P.wa += 0.15 * env(w, 1.36, 1.44, 1.56, 1.7); P.hy += Math.max(0, Math.sin(v * 4)) * 1.2; }
 }
 
@@ -320,18 +364,21 @@ function poseAt(name, u, pw) {
 }
 
 /* ------------------------------------------------------------------ public API */
-export const ROUTINES = ['cheer', 'pump', 'dance', 'juggle', 'backflip', 'chicks', 'strut'];
+export const ROUTINES = ['nest', 'cheer', 'pump', 'dance', 'juggle', 'backflip', 'chicks', 'strut'];
 export const routine = (name) => R[name] || R.cheer;
 
 // Pick the routine for a result. info: {stars, streak (3-star streak incl. this win), boss, firstWorld, last}
 export function pickRoutine(info, rnd = Math.random) {
   const { stars = 1, streak = 0, boss = false, firstWorld = false, last = '' } = info || {};
+  // 2026-11-15: each star count has its own set (1: caring and a cheer; 2: dance, pump, juggle; 3: backflip, chicks,
+  // juggle), shuffled, never the same routine twice in a row
   let pool;
   if (boss) pool = ['strut', 'backflip'];
   else if (firstWorld) pool = ['juggle', 'dance'];
-  else if (stars >= 3) pool = streak >= 2 ? ['chicks', 'backflip'] : ['backflip', 'chicks'];
-  else if (stars === 2) pool = rnd() < 0.5 ? ['dance', 'pump'] : ['pump', 'dance'];
-  else pool = rnd() < 0.65 ? ['cheer', 'pump'] : ['pump', 'cheer'];
+  else if (stars >= 3) pool = streak >= 2 ? ['chicks', 'backflip', 'juggle'] : ['backflip', 'juggle', 'chicks'];
+  else if (stars === 2) pool = ['dance', 'pump', 'juggle'];
+  else pool = ['nest', 'cheer'];
+  if (!(boss || firstWorld || (stars >= 3 && streak >= 2))) { const k = Math.floor(rnd() * pool.length); pool = [...pool.slice(k), ...pool.slice(0, k)]; }
   return pool.find((r) => r !== last) || pool[0];
 }
 // power 0..1 from the result (bigger jumps and more confetti for a better result)

@@ -1,4 +1,4 @@
-// "Who's in this vault": one entry for every villain, boss, creature and hazard that can appear in levels 1-50, the
+// "Who's in this vault": one entry for every villain, boss, creature and hazard that can appear in levels 1-60, the
 // practice vaults and the Wonder Vaults. Written from the sim (src/sim/*.js), not from memory: `does` is what the sim
 // makes it do, `beat` the counter the sim actually honours. Plain words, at most ~70 characters a line.
 // Boss attack counters reuse the in-game tip toasts (render/bossmoves.js, owl.js, reef.js, levels.js tips) so the
@@ -10,6 +10,8 @@
 //
 // villainKinds(level, sim) lists what is in a level: from the level data, plus anything the sim has live.
 // tools/info-check.cjs fails the build check if a level carries a villain/hazard the table does not cover.
+
+import { costumeOf } from '../render/costume.js'; // 0.8.18 kits (a plain table: no drawing is pulled in)
 
 export const VILLAIN_INFO = {
   // ---------------------------------------------------------------- bosses
@@ -30,17 +32,17 @@ export const VILLAIN_INFO = {
   },
   'boss:blizzard': {
     group: 'boss', name: 'Baron von Brr',
-    does: 'A frost gecko in the vault: icy feet, and a lick that freezes eggs.',
+    does: 'A frost gecko: his lick freezes an egg, then he nips it. Shake it free.', // 0.8.19
     beat: 'Strikes and stone stop him. Each saved egg cancels his wind-up.',
     attacks: {
-      gale: 'He blows along his own channel. Stone is too heavy to blow.',
+      gale: 'His wind shoves eggs and turns free rings. Hold a ring; stone eggs stay put.',
       freeze: 'He licks a wall of his channel: it locks for 4 s. Use the others.',
       icicles: 'Turn the ring above an egg to swing its icicle away.',
     },
   },
   'boss:golem': {
     group: 'boss', name: 'Duke Quartz',
-    does: 'A crystal thorn-back: drops crystal spikes and hip-checks eggs.',
+    does: 'A crystal thorn-back: drops crystal spikes, and his ram cracks eggs.',
     beat: 'Roll a stone egg into him: he flips over and loses his attack.',
     more: 'He duels his cousin Spike on sight: the loser is down for 5 s.',
     attacks: {
@@ -52,14 +54,16 @@ export const VILLAIN_INFO = {
   },
   'boss:salamander': {
     group: 'boss', name: 'Lava Salamander',
-    does: 'Spits lava rocks at your eggs and heats whole rings red-hot.',
+    does: 'Roars up volcano rocks at your eggs and heats whole rings red-hot.', // 0.8.19
     beat: 'Use the holes its rocks melt. Each saved egg staggers it.',
     attacks: {
-      rock: 'Roll the egg off the glowing mark. A water egg cools rocks.',
-      rock2: 'Two rocks at once. Roll eggs off the glowing marks.',
+      rock: 'He roars, the crater throws: roll the egg off the glowing mark.', // 0.8.19
+      rock2: 'More rocks at once. Roll eggs off the glowing marks.',
       magma: 'Get your eggs off the glowing ring in time. Its thorns burn.',
       whip: 'Hold that ring as the whip lands and it barely moves.',
       heat: 'An egg that waits ~9 s in one channel cracks. Keep moving.',
+      spit: 'His eyes lock on, his tongue flies: turn the egg out of his line.', // 0.8.19
+      fire: 'A red flame orb or lava makes him white-hot. Water cools him.', // 0.8.18
     },
   },
   'boss:eagle': {
@@ -96,6 +100,11 @@ export const VILLAIN_INFO = {
       silt: 'It hides part of the vault for a while. A jelly’s glow helps.',
     },
   },
+  'boss:raccoon': { // 0.8.17 bandit
+    group: 'boss', name: 'Bandit the Raccoon',
+    does: 'Sits on a ring and cranks eggs up to him.',
+    beat: 'Turn his ring hard against him. Three times!',
+  },
   'boss:gator': {
     group: 'boss', name: 'Grandpa Gator',
     does: 'His tail sweep shakes every ring; his death roll spins one.',
@@ -117,6 +126,13 @@ export const VILLAIN_INFO = {
     },
   },
   // ---------------------------------------------------------------- creatures
+  // 0.8.18 kits: mama raccoon and her kits, first of the creatures (a level's face), one kind per world costume (the face on the card, the map and the reel wears
+  // the level's costume); sim/kits.js
+  ...Object.fromEntries(['ice', 'woods', 'sea', 'cave', 'goggles', 'bow'].map((c) => ['kits:' + c, {
+    group: 'creature', name: 'Mama Raccoon', costume: c,
+    does: 'Her kits sneak in and carry eggs off to her sack.',
+    beat: 'Turn their ring hard: they tumble and drop it.',
+  }])),
   snake: {
     group: 'creature', name: 'Snake',
     does: 'Slides in and eats eggs. It crosses rings only at lined-up gaps.',
@@ -144,8 +160,18 @@ export const VILLAIN_INFO = {
   },
   frog: {
     group: 'creature', name: 'Frog',
-    does: 'Hops ring to ring, plugs gaps, eats orbs and chicks. Never eggs.',
-    beat: 'Eggs land softly on it. A flaming egg or dash chick scares it.',
+    does: 'Hops ring to ring, plugs gaps. Its tongue snatches eggs and orbs.',
+    beat: 'Turn a wall into its tongue: bonk! Drop an egg on it: it spits.',
+  },
+  penguin: { // 0.8.17 pip
+    group: 'creature', name: 'Pip the Penguin',
+    does: 'Belly-slides the ice, shoves eggs ahead and tucks a still one away.',
+    beat: 'Turn a wall or sponge into his slide: bonk, he drops it unharmed.',
+  },
+  monkey: { // 0.8.17 coco
+    group: 'creature', name: 'Coco the Monkey',
+    does: 'Rides a ring, grabs eggs with his tail, throws banana peels.',
+    beat: 'Flick his ring hard: he flies off and lets the egg go.',
   },
   eagle: {
     group: 'creature', name: 'Eagle',
@@ -154,12 +180,34 @@ export const VILLAIN_INFO = {
   },
   salamander: {
     group: 'creature', name: 'Lava salamander',
-    does: 'Breathes fire on the wall ahead: that red-hot patch cracks eggs.',
-    beat: 'Turn the ring it rides to aim the fire at thorns. Water cools it.',
+    does: 'Its tongue reels in eggs in line; far off it dives through lava.', // 0.8.19 (aggroB)
+    beat: 'Turn its ring to carry it off. A stone egg breaks its bite. Water cools it.',
+  },
+  emberspit: { // 0.8.19 (aggroB): the Tongue Lash replaced the ember spit (the key stays)
+    group: 'creature', name: 'Tongue lash',
+    does: 'His eyes lock on an egg, then his tongue flies through a gap.',
+    beat: 'Turn the egg out of his line. Pull it away while he reels: it snaps.',
+    more: 'Stone snaps it, water douses him. Far off he dives and pops up near.',
+  },
+  fireup: { // 0.8.18 lava: the salamander's fire-up
+    group: 'creature', name: 'White-hot',
+    does: 'He gulps a red flame orb (or steps in lava) and goes white-hot.',
+    beat: 'Grab the flame orb first. Water cools him at once: he sulks.',
+    more: 'Then he is quicker, breathes twice as far, and his feet burn thorns.',
+  },
+  frostsal: {
+    group: 'creature', name: 'Frost salamander',
+    does: 'Its bite cracks an egg and freezes it solid. Its breath ices a wall.',
+    beat: 'Turn its ring to carry it off. A fire orb or lava melts it for a while.',
+  },
+  faceoff: {
+    group: 'creature', name: 'Fire against frost',
+    does: 'When the two salamanders meet in a channel they fight, not your eggs.',
+    beat: 'Turn their ring to bring them together: both are knocked out.',
   },
   spike: {
     group: 'creature', name: 'Spike the thorn-back',
-    does: 'Drops thorns behind him and hip-checks eggs along the channel.',
+    does: 'Drops thorns, rams eggs, and curls into a spiky ball to roll at them.', // 0.8.19
     beat: 'A stone egg flips him. Turn the ring under a thorn fast to shake it.',
     more: 'He duels the Duke on sight. Weaken one first to pick the winner.',
   },
@@ -167,7 +215,7 @@ export const VILLAIN_INFO = {
     group: 'creature', name: 'Sly the chameleon',
     does: 'Crawls in and steals power orbs with his tongue. Never eggs.',
     beat: 'Grab orbs first. Feed him the black flame: he coughs one back up.',
-    more: 'Strikes, stuns and a Stone egg stop him. Sitting still, he fades.',
+    more: 'Strikes, stuns and Stone eggs stop him. He fades, then pops up by orbs.', // 0.8.19
   },
   hermit: {
     group: 'creature', name: 'Hermit crab',
@@ -183,6 +231,12 @@ export const VILLAIN_INFO = {
     group: 'creature', name: 'Jellyfish',
     does: 'Drifts right through the walls. Its sting cracks eggs it touches.',
     beat: 'Water washes it away; the live ring or a zap stuns it.',
+  },
+  urchin: { // 0.8.17 urchin
+    group: 'creature', name: 'Spike the sea urchin',
+    does: 'Puffs up, then dashes at an egg and cracks it. His roll cracks too.',
+    beat: 'Shut the gap he aims through: SPLAT! He lies on his back a while.',
+    more: 'A chick or a Stone egg flips him too. Asleep, he is harmless.',
   },
   gator: {
     group: 'creature', name: 'Alligator',
@@ -224,6 +278,7 @@ export const VILLAIN_INFO = {
     group: 'hazard', name: 'Lava rocks',
     does: 'Crash onto a ring, blast nearby eggs, then melt a hole for 5 s.',
     beat: 'Move eggs off the glow, then use the hole. Water eggs cool them.',
+    more: 'With a salamander: the volcano rumbles first; they heat the floor.', // 0.8.19
   },
   lightning: {
     group: 'hazard', name: 'Lightning',
@@ -265,6 +320,16 @@ export const VILLAIN_INFO = {
     does: 'Creep across a gap and seal it with thorns, then grow back.',
     beat: 'Drop through before it closes. Fire burns the vine back.',
   },
+  creeper: { // 0.8.18 the moving thorn (sim/creeper.js): one of the ring's thorns, sliding in a groove
+    group: 'hazard', name: 'Moving thorn',
+    does: 'A thorn that slides along its groove.',
+    beat: 'Turn its ring to carry it away. Fire burns it back.',
+  },
+  doors: { // 2026-11-20 first-five ladder: gate doors left world 1, so their first level (L31) teaches them here
+    group: 'hazard', name: 'Gate doors',
+    does: 'A sliding door shuts a gap, then opens again on a steady beat.',
+    beat: 'Park the egg over the door and let it drop when it opens.',
+  },
   curse: {
     group: 'hazard', name: 'Curse orb',
     does: 'A thief’s trick: grab it and the fuse runs double for 6 s.',
@@ -277,9 +342,12 @@ export const VILLAIN_INFO = {
   },
 };
 
-export const ATTACK_EXTRA = { heat: 'Rising heat' }; // phase flags shown as an attack (names not in sim/boss.js ATTACK_NAME)
+export const ATTACK_EXTRA = { heat: 'Rising heat', spit: 'Ember spit', fire: 'Fire-up' }; // phase flags shown as an attack (names not in sim/boss.js ATTACK_NAME)
 
 const CREATURE_KEYS = ['snake', 'weasel', 'rats', 'octopus', 'fish', 'frog', 'eagle', 'salamander', 'chameleon', 'hermit', 'puffer', 'jelly', 'gator', 'turtle', 'mosquito', 'spider', 'beetle', 'jack'];
+CREATURE_KEYS.push('penguin'); // 0.8.17 pip
+CREATURE_KEYS.push('urchin'); // 0.8.17 urchin
+CREATURE_KEYS.push('monkey'); // 0.8.17 coco
 const listOf = (v) => (!v ? [] : Array.isArray(v) ? v : [v]);
 const HAZARD_ORBS = { curse: 'curse', thorn: 'thornorb' };
 
@@ -293,22 +361,36 @@ export function bossAttacks(L) {
   for (const P of F.phases || []) {
     for (const a of P.attacks || []) if (!out.includes(a)) out.push(a);
     if (P.heat && !out.includes('heat')) out.push('heat');
+    if (P.spit && !out.includes('spit')) out.push('spit'); // 0.8.18 the salamander's powers in the boss's later phases
+    if (P.fire && !out.includes('fire')) out.push('fire');
   }
   return out;
 }
 
 // Every kind present in level L (bosses first, then creatures, then hazards). sim (optional): the live Sim, which adds
 // anything it is running that the level data does not name (and is how a boss's summoned creatures are found).
+// 0.8.18 kits: the kind for a level with mama raccoon (her world costume: render/costume.js costumeOf)
+export const kitsKind = (L) => 'kits:' + ((L.kits && L.kits.costume) || costumeOf(L.theme));
 export function villainKinds(L, sim = null) {
   if (!L) return [];
   const boss = bossOf(L), set = new Set();
   if (boss) set.add('boss:' + boss);
+  if (L.kits) set.add(kitsKind(L)); // 0.8.18 kits: first of the creatures, so the level's face is the costumed mama
   for (const k of CREATURE_KEYS) {
     const n = listOf(L[k]).length;
     if (!n) continue;
     if (k === 'snake' && boss === 'snake') continue; // the snakes ARE Serpent Hollow
     if (k === 'eagle' && boss === 'eagle') continue; // the level's eagle is the Storm Eagle
     if (k === 'salamander' && boss === 'salamander' && n === 1) continue; // its one salamander is the boss
+    if (k === 'salamander') { // 0.8.14: fire and frost are two kinds, and together they are a third thing to know
+      const fr = listOf(L[k]).filter((S) => S && S.kind === 'frost').length;
+      if (n - fr > 0) set.add('salamander');
+      if (fr) set.add('frostsal');
+      if (fr && n - fr > 0 && !boss) set.add('faceoff');
+      if (listOf(L[k]).some((S) => S && S.kind !== 'frost') && !(boss === 'salamander' && n === 1)) set.add('emberspit'); // 0.8.19: every fire salamander lashes
+      if (listOf(L[k]).some((S) => S && S.kind !== 'frost' && S.fireup)) set.add('fireup');
+      continue;
+    }
     set.add(k);
   }
   if (sim) {
@@ -319,11 +401,17 @@ export function villainKinds(L, sim = null) {
     if (live(sim.octos)) set.add('octopus');
     if (live(sim.schools)) set.add('fish');
     if (live(sim.frogs)) set.add('frog');
-    if (live(sim.sals) && !(boss === 'salamander' && sim.sals.length === 1) && sim.sals.some((C) => C.sp === 'sal')) set.add('salamander'); // L15's frost gecko and L20's thorn-backs are not salamanders
+    if (live(sim.pips)) set.add('penguin'); // 0.8.17 pip
+    if (live(sim.cocos)) set.add('monkey'); // 0.8.17 coco
+    if (live(sim.sals) && !(boss === 'salamander' && sim.sals.length === 1) && sim.sals.some((C) => C.sp === 'sal' && C.kind !== 'frost')) set.add('salamander'); // L15's frost gecko and L20's thorn-backs are not salamanders
+    if ((sim.sals || []).some((C) => C.sp === 'sal' && C.kind === 'frost')) set.add('frostsal');
+    if ((sim.sals || []).some((C) => C.sp === 'sal' && !C.boss && C.kind !== 'frost')) set.add('emberspit'); // 0.8.19 every fire salamander lashes (the boss's are attack lines)
+    if ((sim.sals || []).some((C) => C.sp === 'sal' && !C.boss && C.fu)) set.add('fireup');
     if ((sim.sals || []).some((C) => C.role === 'spike')) set.add('spike');
     if (live(sim.hermits)) set.add('hermit');
     if (live(sim.puffs)) set.add('puffer');
     if (live(sim.jellies)) set.add('jelly');
+    if (live(sim.urchins)) set.add('urchin'); // 0.8.17 urchin
     if ((sim.gators || []).some((G) => !G.boss)) set.add('gator');
     if (live(sim.turtles)) set.add('turtle');
     if (live(sim.mosqs)) set.add('mosquito');
@@ -340,6 +428,8 @@ export function villainKinds(L, sim = null) {
   const rings = L.rings || [];
   if (rings.some((r) => r.retract)) set.add('popthorns');
   if (rings.some((r) => r.vine || (r.gaps || []).some((g) => g.vine))) set.add('vines');
+  for (const r of rings) if (r.creep) set.add('creeper'); // 0.8.18 the moving thorn
+  if (rings.some((r) => (r.gaps || []).some((g) => g.shut))) set.add('doors');
   const orbTypes = [...(L.orbs || []).map((o) => o.type), ...(L.portals || []).flatMap((p) => p.emit || []), ...((L.bossFight && L.bossFight.throws) || [])];
   for (const [t, k] of Object.entries(HAZARD_ORBS)) if (orbTypes.includes(t)) set.add(k);
   const order = Object.keys(VILLAIN_INFO);

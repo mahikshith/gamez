@@ -14,7 +14,7 @@ const INFO = {
   frostnova: ['Frost nova', 'Every creature freezes and thorns turn brittle. Rings lock, then go icy.', '#9fe9ff', ['#effcff', '#2a86b8', '#062a40']],
   shock: ['Shock ring', 'This ring zaps creatures away for 8 s. Eggs that touch it bounce off.', '#6fd0ff', ['#c8eeff', '#1b5f9e', '#06193a']],
   thunderclap: ['Thunderclap', 'Every creature is stunned. Doors and portals black out a while.', '#ffe14a', ['#fff3b0', '#6b5a1a', '#1f1904']],
-  laser: ['Laser beak', 'Tap to fire: cuts thorns and walls in a line. It burns sponge too.', '#ff4b3a', ['#ffb3a0', '#8f1a10', '#2c0503']],
+  laser: ['Laser cannon', 'Tap to fire: cuts thorns and walls, stuns villains. Burns sponge too.', '#ff4b3a', ['#ffb3a0', '#8f1a10', '#2c0503']],
   spin: ['Spin storm', 'The whole vault spins and flings creatures to the rim. Eggs tumble!', '#7ff0d8', ['#d2fff5', '#13806e', '#032a24']],
   pepper: ['Pepper puff', 'Creatures sneeze and flee for 8 s. The smoke hides the board a moment.', '#ff6a2a', ['#ffc39a', '#9c2c08', '#300b00']],
   shrink: ['Shrink ray', 'Eggs go quail size: through grates, hard to track. They crack easier.', '#c49bff', ['#eedcff', '#5b2fa0', '#1a0838']],
@@ -26,7 +26,9 @@ for (const id in INFO) {
   POWER_INFO[id] = { name, line, color };
   GLASS[id] = glass;
 }
-for (const C of COMBOS) POWER_INFO['combo_' + C.id] = { name: 'COMBO! ' + C.name, line: C.line, color: '#ffd23f' };
+// the pickup card says one short line (2026-11-20, owner: less text, the picture teaches); the album keeps C.line
+const COMBO_CARD = { shatter: 'Frozen creatures are knocked out.', sweep: 'The beam sweeps round: every thorn cut.', cannon: 'Tiny iron eggs smash through.', twister: 'Every creature sneezes out to the rim.', magnet: 'Iron eggs stick to the live ring.', bait: 'Creatures chase the decoy far away.', stink: 'Biters flee for far longer.' };
+for (const C of COMBOS) POWER_INFO['combo_' + C.id] = { name: 'COMBO! ' + C.name, line: COMBO_CARD[C.id] || C.line, color: '#ffd23f' };
 
 const OUT = '#1b1410';
 const hash = (n) => { const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); };
@@ -189,30 +191,22 @@ EMBLEM_ART.thunderclap = (ctx, t) => {
   ctx.strokeStyle = '#5a3c00'; ctx.lineWidth = 6; ctx.stroke();
   ctx.restore();
 };
-function beak(ctx, s, glow) {
-  // a golden beak pointing +x, s = its length; the tip glows red
-  ctx.lineJoin = 'round';
-  const g = ctx.createLinearGradient(0, -s * 0.4, 0, s * 0.4);
-  g.addColorStop(0, '#ffe68a'); g.addColorStop(0.5, '#f2a91c'); g.addColorStop(1, '#a85f00');
-  ctx.beginPath(); ctx.moveTo(-s * 0.55, -s * 0.36); ctx.quadraticCurveTo(s * 0.15, -s * 0.34, s * 0.5, -s * 0.02); ctx.lineTo(-s * 0.5, s * 0.03); ctx.closePath();
-  ctx.fillStyle = g; ctx.fill(); ctx.strokeStyle = '#4a2a00'; ctx.lineWidth = s * 0.07; ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(-s * 0.5, s * 0.08); ctx.lineTo(s * 0.42, s * 0.05); ctx.quadraticCurveTo(s * 0.05, s * 0.3, -s * 0.48, s * 0.3); ctx.closePath();
-  ctx.fillStyle = '#d98a10'; ctx.fill(); ctx.stroke();
-  ctx.fillStyle = 'rgba(255,255,255,0.6)';
-  ctx.beginPath(); ctx.ellipse(-s * 0.15, -s * 0.22, s * 0.2, s * 0.05, 0.1, 0, TAU); ctx.fill();
-  const r = s * (0.13 + 0.03 * glow);
-  const gl = ctx.createRadialGradient(s * 0.5, 0, 0, s * 0.5, 0, r * 2.2);
-  gl.addColorStop(0, '#ffffff'); gl.addColorStop(0.35, '#ff5a3c'); gl.addColorStop(1, 'rgba(255,60,40,0)');
-  ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(s * 0.5, 0, r * 2.2, 0, TAU); ctx.fill();
-}
-EMBLEM_ART.laser = (ctx, t) => {
+EMBLEM_ART.laser = (ctx, t) => { // the little laser cannon (drawLaserBeak, below), aiming up and right with its beam
   ctx.save();
+  const a = -0.55, sz = 96, ox = -30, oy = 4, x0 = ox + Math.cos(a) * sz * 0.95, y0 = oy + Math.sin(a) * sz * 0.95;
   ctx.lineCap = 'round';
-  ctx.strokeStyle = 'rgba(255,70,50,0.55)'; ctx.lineWidth = 24 + 4 * Math.sin(t * 9);
-  ctx.beginPath(); ctx.moveTo(30, 0); ctx.lineTo(110, 0); ctx.stroke();
-  ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 8; ctx.stroke();
-  ctx.translate(-12, 0);
-  beak(ctx, 92, 0.5 + 0.5 * Math.sin(t * 7));
+  ctx.strokeStyle = 'rgba(255,190,160,0.8)'; ctx.lineWidth = 20 + 4 * Math.sin(t * 9);
+  ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x0 + Math.cos(a) * 60, y0 + Math.sin(a) * 60); ctx.stroke();
+  ctx.strokeStyle = '#fffaf0'; ctx.lineWidth = 8; ctx.stroke();
+  ctx.translate(ox, oy);
+  // a cream rim round the silhouette: the red cannon on red glass
+  const c = Math.cos(a), sn = Math.sin(a), o = 7;
+  ctx.fillStyle = ctx.strokeStyle = '#fff1d6';
+  ctx.beginPath(); ctx.arc(0, sz * 0.17, sz * 0.38 + o, 0, TAU); ctx.fill();
+  for (const sx of [-1, 1]) { ctx.beginPath(); ctx.ellipse(sx * sz * 0.21, sz * 0.52, sz * 0.14 + o, sz * 0.08 + o, 0, 0, TAU); ctx.fill(); }
+  ctx.lineWidth = sz * 0.42 + o * 2; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(c * sz * 0.8, sn * sz * 0.8); ctx.stroke();
+  ctx.beginPath(); ctx.arc(c * sz * 0.92, sn * sz * 0.92, sz * 0.3 + o, 0, TAU); ctx.fill();
+  drawLaserBeak(ctx, sz, 0.75 + 0.25 * Math.sin(t * 7), 0, t, a, 3);
   ctx.restore();
 };
 EMBLEM_ART.spin = (ctx, t) => {
@@ -331,6 +325,383 @@ function solidLa(ring, la) {
   return false;
 }
 
+// ======================================================================== 2026-11-20 polish: Sweep beam and Pepper twister
+// (owner: "asset quality needs to be maintained ... those assets need to be properly animated"). Render only: what the
+// powers DO is unchanged (sim/powers2.js). Exported pieces are reused by the level card's toy stages (howto.js).
+const SEE_FONT = '"Fredoka", "Arial Rounded MT Bold", "Trebuchet MS", system-ui, sans-serif'; // ui.js FONT
+const BR = { base: '#d9a441', lo: '#a8712a', hi: '#ffe39a', dark: '#7a4c18', line: '#4a2a08' }; // brass
+const mixHex = (a, b, u) => { const p = (h, i) => parseInt(h.slice(1 + i * 2, 3 + i * 2), 16); u = clamp01(u); return `rgb(${[0, 1, 2].map((i) => Math.round(p(a, i) + (p(b, i) - p(a, i)) * u)).join(',')})`; };
+
+// The laser cannon (v0.8.9, mykee: "a proper kind of laser, a small kind of cannon"; was a thin brass muzzle): a round red
+// turret pod on two stubby feet, a swivel cap with a face, a short fat ivory barrel with two gold bands and a flared gold
+// muzzle holding a big red crystal. The crystal glows up while a shot is ready and goes white-hot as it fires; the barrel
+// kicks back and the pod squashes; a puff of smoke rolls off the muzzle after. Pixel space, y down: the pivot (the cap) at
+// 0,0, the crystal s*0.95 out along aim (rad, y down; 0 = right). heat 0..1, rec 0..1 (the kick), shots: red lights on the
+// pod's belt (-1: none), puff 0..1 over the smoke after a shot (0: none). The old 5-argument calls still work.
+const CN = { pod: ['#e2493d', '#ac2c25', '#ff9a85'], ivy: ['#f7ecd2', '#d5bc8e', '#fffdf6'], gold: ['#f5b83a', '#c47c16', '#ffe9a6'], foot: '#8a3020', line: '#4a2410' };
+export function drawLaserBeak(ctx, s, heat, rec, t, aim = 0, shots = 3, puff = 0) {
+  const lw = Math.max(1.5, s * 0.055), L = CN.line, kick = clamp01(rec), c = Math.cos(aim), sn = Math.sin(aim);
+  const lx = c * (s * 0.95 - kick * s * 0.2), ly = sn * (s * 0.95 - kick * s * 0.2), lr = s * 0.17; // the crystal, after the kick
+  const path = (f) => { ctx.beginPath(); f(); };
+  const fillLine = (col, w = lw) => { ctx.fillStyle = col; ctx.fill(); ctx.strokeStyle = L; ctx.lineWidth = w; ctx.stroke(); };
+  ctx.save();
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  if (heat > 0.02) { // the glow the crystal throws: two soft discs, no gradient
+    ctx.globalAlpha = 0.26 * heat; ctx.fillStyle = '#ff5a3c'; path(() => ctx.arc(lx, ly, lr * (2.2 + 1.8 * heat), 0, TAU)); ctx.fill();
+    ctx.globalAlpha = 0.42 * heat; ctx.fillStyle = '#ffb08a'; path(() => ctx.arc(lx, ly, lr * (1.4 + 0.7 * heat), 0, TAU)); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+  // the pod and its feet squash down on the kick (anchored at the feet)
+  const R = s * 0.38, py = s * 0.17, fy = py + R * 0.92;
+  ctx.save();
+  ctx.translate(0, fy); ctx.scale(1 + 0.1 * kick, 1 - 0.13 * kick); ctx.translate(0, -fy);
+  for (const sx of [-1, 1]) { path(() => ctx.ellipse(sx * R * 0.55, fy, R * 0.36, R * 0.2, 0, 0, TAU)); fillLine(CN.foot); }
+  const pod = () => path(() => ctx.arc(0, py, R, 0, TAU));
+  pod(); ctx.fillStyle = CN.pod[1]; ctx.fill();
+  ctx.save(); pod(); ctx.clip();
+  path(() => ctx.arc(-R * 0.12, py - R * 0.14, R * 0.94, 0, TAU)); ctx.fillStyle = CN.pod[0]; ctx.fill();
+  path(() => ctx.ellipse(-R * 0.42, py - R * 0.5, R * 0.26, R * 0.13, -0.6, 0, TAU)); ctx.fillStyle = CN.pod[2]; ctx.fill();
+  const by = py + R * 0.38, bh = R * 0.34; // the gold belt with the shot lights
+  ctx.fillStyle = CN.gold[0]; ctx.fillRect(-R, by - bh / 2, R * 2, bh);
+  ctx.fillStyle = CN.gold[1]; ctx.fillRect(-R, by + bh * 0.18, R * 2, bh * 0.32);
+  ctx.strokeStyle = L; ctx.lineWidth = lw * 0.8; ctx.beginPath(); ctx.moveTo(-R, by - bh / 2); ctx.lineTo(R, by - bh / 2); ctx.moveTo(-R, by + bh / 2); ctx.lineTo(R, by + bh / 2); ctx.stroke();
+  ctx.restore();
+  pod(); ctx.strokeStyle = L; ctx.lineWidth = lw; ctx.stroke();
+  if (shots >= 0) for (let i = 0; i < 3; i++) {
+    const x = (i - 1) * R * 0.5, on = i < shots, r = R * 0.14;
+    path(() => ctx.arc(x, by, r, 0, TAU)); fillLine(on ? '#ff3b2f' : '#5a1a12', lw * 0.7);
+    if (on) { ctx.fillStyle = '#ffd0c0'; path(() => ctx.arc(x - r * 0.3, by - r * 0.3, r * 0.35, 0, TAU)); ctx.fill(); }
+  }
+  ctx.restore();
+  // the barrel turns on the cap; it kicks back along itself
+  ctx.save();
+  ctx.rotate(aim);
+  if (c < 0) ctx.scale(1, -1); // pointing left: keep the light on top
+  ctx.translate(-kick * s * 0.2, 0);
+  const x0 = s * 0.08, x1 = s * 0.72, h0 = s * 0.21, h1 = s * 0.195;
+  const barrel = () => path(() => { ctx.moveTo(x0, -h0); ctx.lineTo(x1, -h1); ctx.lineTo(x1, h1); ctx.lineTo(x0, h0); ctx.closePath(); });
+  barrel(); ctx.fillStyle = CN.ivy[0]; ctx.fill();
+  ctx.save(); barrel(); ctx.clip();
+  ctx.fillStyle = CN.ivy[1]; ctx.fillRect(x0, h0 * 0.3, x1, h0);
+  ctx.fillStyle = CN.ivy[2]; ctx.fillRect(x0 + s * 0.08, -h0 * 0.68, s * 0.5, h0 * 0.28);
+  if (heat > 0.05) { ctx.globalAlpha = 0.5 * heat; ctx.fillStyle = '#ff7a4a'; ctx.fillRect(s * 0.5, -h0, s * 0.3, h0 * 2); ctx.globalAlpha = 1; } // it warms toward the muzzle
+  ctx.restore();
+  barrel(); ctx.strokeStyle = L; ctx.lineWidth = lw; ctx.stroke();
+  for (const bx of [0.34, 0.56]) { // two gold bands
+    const hb = s * (0.235 - bx * 0.03);
+    path(() => ctx.roundRect ? ctx.roundRect(s * bx - s * 0.045, -hb, s * 0.09, hb * 2, s * 0.025) : ctx.rect(s * bx - s * 0.045, -hb, s * 0.09, hb * 2)); fillLine(CN.gold[0], lw * 0.85);
+    ctx.fillStyle = CN.gold[2]; ctx.fillRect(s * bx - s * 0.022, -hb * 0.8, s * 0.044, hb * 0.35);
+  }
+  // the flared muzzle and its crystal
+  const m0 = s * 0.7, m1 = s * 0.93, mh = s * 0.3;
+  path(() => { ctx.moveTo(m0, -h1 - s * 0.02); ctx.quadraticCurveTo(s * 0.86, -h1, m1, -mh); ctx.lineTo(m1, mh); ctx.quadraticCurveTo(s * 0.86, h1, m0, h1 + s * 0.02); ctx.closePath(); }); fillLine(CN.gold[0]);
+  ctx.save(); path(() => { ctx.moveTo(m0, s * 0.03); ctx.lineTo(m1, s * 0.08); ctx.lineTo(m1, mh); ctx.quadraticCurveTo(s * 0.86, h1, m0, h1 + s * 0.02); ctx.closePath(); }); ctx.fillStyle = CN.gold[1]; ctx.fill(); ctx.restore();
+  ctx.fillStyle = CN.gold[2]; path(() => ctx.ellipse(s * 0.84, -s * 0.15, s * 0.05, s * 0.022, -0.5, 0, TAU)); ctx.fill();
+  path(() => ctx.ellipse(m1, 0, s * 0.06, mh, 0, 0, TAU)); fillLine(CN.gold[1], lw * 0.85);
+  const cx = m1 - s * 0.01; // the crystal: a fat faceted gem, dark red cold, red when charged, white-hot as it fires
+  path(() => ctx.arc(cx, 0, lr, 0, TAU)); fillLine(mixHex('#7a1208', '#ff3b24', heat * 1.5));
+  path(() => { ctx.moveTo(cx - lr * 0.55, -lr * 0.2); ctx.lineTo(cx - lr * 0.1, -lr * 0.62); ctx.lineTo(cx + lr * 0.5, -lr * 0.25); ctx.lineTo(cx + lr * 0.3, lr * 0.42); ctx.lineTo(cx - lr * 0.35, lr * 0.38); ctx.closePath(); });
+  ctx.fillStyle = mixHex('#b02814', '#fff6ee', heat > 0.75 ? 1 : heat * 0.9); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.85)'; path(() => ctx.ellipse(cx - lr * 0.38, -lr * 0.42, lr * 0.2, lr * 0.11, -0.6, 0, TAU)); ctx.fill();
+  ctx.restore();
+  // the swivel cap with its face: eyes on where it aims, squeezed shut as it fires
+  const cr = s * 0.25;
+  path(() => ctx.arc(0, 0, cr, 0, TAU)); ctx.fillStyle = CN.pod[1]; ctx.fill();
+  path(() => ctx.arc(-cr * 0.1, -cr * 0.12, cr * 0.86, 0, TAU)); ctx.fillStyle = CN.pod[0]; ctx.fill();
+  path(() => ctx.ellipse(-cr * 0.45, -cr * 0.55, cr * 0.22, cr * 0.11, -0.6, 0, TAU)); ctx.fillStyle = CN.pod[2]; ctx.fill();
+  path(() => ctx.arc(0, 0, cr, 0, TAU)); ctx.strokeStyle = L; ctx.lineWidth = lw; ctx.stroke();
+  const ex = c * cr * 0.22, ey = sn * cr * 0.16 + cr * 0.05, squint = kick > 0.25;
+  for (const sx of [-1, 1]) {
+    const x = ex + sx * cr * 0.38, y = ey;
+    if (squint) { ctx.strokeStyle = L; ctx.lineWidth = lw * 1.1; path(() => { ctx.moveTo(x - sx * cr * 0.16, y - cr * 0.15); ctx.lineTo(x + sx * cr * 0.1, y); ctx.lineTo(x - sx * cr * 0.16, y + cr * 0.15); }); ctx.stroke(); continue; }
+    path(() => ctx.ellipse(x, y, cr * 0.25, cr * 0.31, 0, 0, TAU)); fillLine('#fffdf6', lw * 0.8);
+    const blink = (t + 0.3) % 3.7 < 0.12;
+    if (blink) { ctx.fillStyle = CN.pod[0]; path(() => ctx.ellipse(x, y, cr * 0.27, cr * 0.33, 0, 0, TAU)); ctx.fill(); ctx.strokeStyle = L; ctx.lineWidth = lw * 0.9; path(() => { ctx.moveTo(x - cr * 0.2, y); ctx.lineTo(x + cr * 0.2, y); }); ctx.stroke(); continue; }
+    const qx = x + c * cr * 0.1, qy = y + sn * cr * 0.13;
+    ctx.fillStyle = '#1e1008'; path(() => ctx.arc(qx, qy, cr * 0.15, 0, TAU)); ctx.fill();
+    ctx.fillStyle = '#fff'; path(() => ctx.arc(qx - cr * 0.05, qy - cr * 0.06, cr * 0.055, 0, TAU)); ctx.fill();
+  }
+  if (heat > 0.8 && kick > 0.15) { // the shot: a white-hot star on the crystal
+    ctx.fillStyle = '#fffaf0'; ctx.globalAlpha = Math.min(1, kick * 1.5);
+    path(() => { for (let i = 0; i < 8; i++) { const a = (i / 8) * TAU + t * 3, r = i % 2 ? lr * 0.6 : lr * 1.5; ctx.lineTo(lx + Math.cos(a) * r, ly + Math.sin(a) * r); } ctx.closePath(); }); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+  if (puff > 0 && puff < 1) { // a puff of smoke rolls up off the muzzle
+    for (let i = 0; i < 3; i++) {
+      const q = clamp01(puff * 1.2 - i * 0.12), r = lr * (0.7 + 1.3 * q) * (1 - i * 0.15);
+      ctx.globalAlpha = 0.75 * (1 - q) * (q > 0 ? 1 : 0);
+      ctx.fillStyle = i === 1 ? '#c9c0b8' : '#e8e2dc';
+      path(() => ctx.arc(lx + c * lr * (0.4 + q * 1.4) + (i - 1) * lr * 0.9, ly + sn * lr * (0.4 + q * 1.4) - q * s * 0.45 - i * lr * 0.3, r, 0, TAU)); ctx.fill();
+      ctx.strokeStyle = 'rgba(74,36,16,0.45)'; ctx.lineWidth = lw * 0.6; ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+  ctx.restore();
+}
+export const BEAK_M = 0.74; // m: the cannon's reach to its crystal (an egg is 0.56 m tall: the cannon stands a little taller)
+
+// sparks spraying where a beam meets something (world space at x, y; a = the beam's angle; n sparks; u = a seed clock)
+export function beamSparks(ctx, x, y, a, k, u, n = 5, size = 1) {
+  const R = rng(Math.floor(u * 40) + Math.floor((x + 9) * 31) + Math.floor((y + 9) * 17));
+  ctx.save();
+  ctx.lineCap = 'round';
+  for (let i = 0; i < n; i++) {
+    const b = a + Math.PI + (R() - 0.5) * 2.2, l = (0.12 + 0.28 * R()) * size, o = 0.04 * R();
+    ctx.strokeStyle = i % 2 ? '#fff3b0' : '#ffb03a'; ctx.lineWidth = Math.max(0.02, (1.6 + R()) / k) * size;
+    ctx.beginPath(); ctx.moveTo(x + o * Math.cos(b), y + o * Math.sin(b)); ctx.lineTo(x + (o + l) * Math.cos(b), y + (o + l) * Math.sin(b)); ctx.stroke();
+  }
+  ctx.fillStyle = '#fff8e0'; ctx.beginPath(); ctx.arc(x, y, Math.max(0.035, 2.4 / k) * size, 0, TAU); ctx.fill();
+  ctx.restore();
+}
+// a thorn the beam cut: a charred stub on the ring, its cut edge glowing, a wisp of smoke; u = 0..1 over its second
+export function scorchStub(ctx, x, y, ang, h, k, u) {
+  const a = 1 - clamp01((u - 0.6) / 0.4), glow = 1 - clamp01(u / 0.7);
+  ctx.save();
+  ctx.globalAlpha *= a;
+  ctx.translate(x, y); ctx.rotate(ang); // +x points along the thorn (out of the wall)
+  const w = 0.075, hh = h * 0.32;
+  ctx.beginPath(); ctx.moveTo(0, -w); ctx.lineTo(hh, -w * 0.55); ctx.lineTo(hh * 0.92, w * 0.5); ctx.lineTo(0, w); ctx.closePath();
+  ctx.fillStyle = '#2b1a12'; ctx.fill(); ctx.strokeStyle = 'rgba(20,10,6,0.9)'; ctx.lineWidth = Math.max(0.012, 1 / k); ctx.stroke();
+  if (glow > 0) { ctx.strokeStyle = `rgba(255,${120 + 100 * glow},50,${glow})`; ctx.lineWidth = Math.max(0.03, 2.2 / k); ctx.beginPath(); ctx.moveTo(hh, -w * 0.55); ctx.lineTo(hh * 0.92, w * 0.5); ctx.stroke(); }
+  for (let i = 0; i < 2; i++) { const q = (u * 1.4 + i * 0.45) % 1; ctx.globalAlpha = a * 0.45 * (1 - q); ctx.fillStyle = '#6b625c'; ctx.beginPath(); ctx.arc(hh + q * 0.45, (i ? 0.05 : -0.04) + Math.sin(q * 6 + i) * 0.04, 0.04 + q * 0.09, 0, TAU); ctx.fill(); }
+  ctx.restore();
+}
+
+// ---- pepper smoke: soft puffs (baked once into a small picture, three tints) with pepper specks that swirl
+const PUFF = { cv: null };
+function puffSprite() {
+  if (PUFF.cv !== null) return PUFF.cv;
+  PUFF.cv = false;
+  if (typeof document === 'undefined') return false;
+  try {
+    const n = 96, cv = document.createElement('canvas'); cv.width = n * 3; cv.height = n;
+    const q = cv.getContext('2d');
+    [['#e4553a', '#b93524', '#ff9a7c'], ['#d84a31', '#a82c1d', '#f78c6e'], ['#ee6846', '#c2412a', '#ffae90']] /* 2026-11-23 (mykee: "the brown kind of paper thing... simply a red cloud"): pepper is red */.forEach(([b, lo, hi], i) => {
+      const cx = n * i + n / 2, cy = n / 2, r = n * 0.4;
+      const blob = (x, y, rr) => { q.beginPath(); q.arc(x, y, rr, 0, TAU); };
+      q.save();
+      blob(cx, cy, r); q.fillStyle = b; q.fill();
+      q.save(); blob(cx, cy, r); q.clip();
+      blob(cx + r * 0.18, cy + r * 0.32, r * 0.82); q.fillStyle = lo; q.fill(); // the shaded underside
+      blob(cx - r * 0.06, cy - r * 0.04, r * 0.74); q.fillStyle = b; q.fill();
+      blob(cx - r * 0.3, cy - r * 0.34, r * 0.34); q.fillStyle = hi; q.fill(); // the lit top
+      q.restore();
+      blob(cx, cy, r); q.strokeStyle = 'rgba(74,30,12,0.55)'; q.lineWidth = 3; q.stroke(); // thin, dark-tinted outline
+      q.restore();
+    });
+    PUFF.cv = cv;
+  } catch (e) { PUFF.cv = false; }
+  return PUFF.cv;
+}
+function puff(ctx, x, y, r, tint, a) {
+  const cv = puffSprite();
+  if (a <= 0.01 || r <= 0) return;
+  ctx.globalAlpha = a;
+  if (cv) { ctx.save(); ctx.translate(x, y); ctx.scale(1, -1); ctx.drawImage(cv, (tint % 3) * 96, 0, 96, 96, -r * 1.25, -r * 1.25, r * 2.5, r * 2.5); ctx.restore(); }
+  else { ctx.fillStyle = '#c98a5e'; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill(); }
+}
+function speck(ctx, x, y, s, rot, col) { ctx.save(); ctx.translate(x, y); ctx.rotate(rot); ctx.fillStyle = col; ctx.beginPath(); ctx.ellipse(0, 0, s, s * 0.55, 0, 0, TAU); ctx.fill(); ctx.restore(); }
+// the cloud: world space, centre (x, y), radius r, f = how thick 0..1
+export function drawPepperCloud(ctx, x, y, r, f, k, t) {
+  if (f <= 0.01) return;
+  ctx.save();
+  const n = 11;
+  for (let i = 0; i < n; i++) { // back to front: the lower puffs last
+    const a = hash(i * 1.7) * TAU + t * 0.22 * (i % 2 ? 1 : -1), d = r * 0.58 * Math.sqrt(hash(i * 2.3 + 1)) * (0.7 + 0.3 * f);
+    const pr = r * (0.34 + 0.16 * hash(i * 3.1)) * (0.7 + 0.3 * f) * (1 + 0.05 * Math.sin(t * 2.2 + i));
+    puff(ctx, x + d * Math.cos(a), y + d * Math.sin(a) * 0.8 + r * 0.12 * (i / n - 0.5), pr, i, 0.93 * f);
+  }
+  ctx.globalAlpha = f;
+  const sz = Math.max(0.022, 1.7 / k);
+  for (let i = 0; i < 24; i++) { // pepper specks riding the smoke round
+    const a = hash(i * 5.3) * TAU + t * (0.7 + hash(i) * 0.9) * (i % 3 ? 1 : -1), d = r * (0.25 + 0.6 * hash(i * 7.7 + 2));
+    speck(ctx, x + d * Math.cos(a), y + d * Math.sin(a) * 0.82, sz * (0.8 + 0.6 * hash(i * 1.3)), a * 2 + t, i % 4 === 0 ? '#1b0a06' : '#7a1408');
+  }
+  ctx.fillStyle = '#ffd27a';
+  for (let i = 0; i < 4; i++) { const a = hash(i * 9.1) * TAU + t * 1.3, d = r * 0.5 * hash(i * 4.4 + 3), tw = Math.sin(t * 9 + i * 2); if (tw > 0.2) { star(ctx, x + d * Math.cos(a), y + d * Math.sin(a), sz * 1.6 * tw, 4, 0.35); ctx.fill(); } }
+  ctx.restore();
+}
+// the twister: the spin winds the smoke into a funnel that whirls, then flings it out. u 0..1 over TWIST_T s
+export const TWIST_T = 1.6;
+export function drawTwister(ctx, x, y, r, u, k, t) {
+  if (u >= 1) return;
+  const g = clamp01(u / 0.3), f = clamp01((u - 0.12) / 0.3), out = clamp01((u - 0.68) / 0.32), gE = g * g * (3 - 2 * g);
+  ctx.save();
+  // 1) the cloud is pulled in round and round
+  if (f < 1) {
+    for (let i = 0; i < 9; i++) {
+      const a = hash(i * 1.7) * TAU + t * (2 + 9 * gE), d = r * 0.6 * (1 - 0.7 * gE) * (0.5 + 0.5 * hash(i * 2.3 + 1));
+      puff(ctx, x + d * Math.cos(a), y + d * Math.sin(a) * 0.7, r * (0.36 + 0.12 * hash(i)) * (1 - 0.35 * gE), i, 0.92 * (1 - f));
+    }
+  }
+  // 2) the funnel: narrow at the floor, wide at the top, each layer whirling faster near the bottom
+  if (f > 0) {
+    const H = r * 1.35 * (0.6 + 0.4 * f), lift = out * r * 0.7, spread = 1 + out * 0.5, n = 9, bend = r * 0.22;
+    for (const front of [false, true]) {
+      for (let j = 0; j < n; j++) {
+        const h = j / (n - 1), yy = y - r * 0.3 + lift + H * h, rx = r * (0.07 + 0.42 * h * h + 0.06 * h) * spread, sz = r * (0.1 + 0.15 * h) * (1 - 0.3 * out);
+        const sway = Math.sin(t * 3.1 + j * 0.6) * bend * h + bend * h * h; // the funnel leans and snakes as it whirls
+        const m = 4 + Math.round(h * 4);
+        for (let q = 0; q < m; q++) {
+          const a = j * 0.9 + (q / m) * TAU + t * (12 - j * 0.8), sn = Math.sin(a);
+          if ((sn > 0) !== front) continue;
+          puff(ctx, x + sway + rx * Math.cos(a), yy + rx * 0.3 * sn, sz * (1 + 0.4 * out), j + q, (front ? 0.97 : 0.72) * f * (1 - out) * (1 - out));
+        }
+      }
+    }
+    // wind streaks and pepper whipped round the funnel
+    ctx.globalAlpha = 0.8 * f * (1 - out);
+    ctx.strokeStyle = 'rgba(255,248,236,0.9)'; ctx.lineCap = 'round'; ctx.lineWidth = Math.max(0.025, 2 / k);
+    for (let j = 0; j < 3; j++) { const h = 0.3 + 0.3 * j, yy = y - r * 0.3 + lift + H * h, rx = r * (0.07 + 0.42 * h * h + 0.06 * h) * spread + r * 0.12, a0 = t * (8 - j) + j * 2; ctx.save(); ctx.translate(x + bend * h * h, yy); ctx.scale(1, 0.3); ctx.beginPath(); ctx.arc(0, 0, rx * 1.15, a0, a0 + 1.6); ctx.stroke(); ctx.restore(); }
+    const sz = Math.max(0.022, 1.7 / k);
+    for (let i = 0; i < 26; i++) {
+      const j = i % n, h = j / (n - 1), yy = y - r * 0.3 + lift + H * h, rx = (r * (0.12 + 0.42 * h * h) * spread + r * 0.06) * (1 + out * 1.5), a = hash(i * 3.3) * TAU + t * (13 - j);
+      ctx.globalAlpha = f * (1 - out * 0.8);
+      speck(ctx, x + bend * h * h + rx * Math.cos(a), yy + rx * 0.3 * Math.sin(a), sz, a, i % 4 === 0 ? '#1b0a06' : '#7a1408');
+    }
+  }
+  ctx.restore();
+}
+// a creature's sneeze, at its head (x, y), blowing along dir: "ah..." with watery eyes, then "CHOO!", a jolt and a
+// spray of pepper. u 0..1 over SNEEZE_T s. sz = the creature's head size (m).
+export const SNEEZE_T = 1.3;
+export function drawSneeze(ctx, x, y, dir, u, k, t, sz = 0.5) {
+  if (u >= 1 || u < 0) return;
+  const ah = clamp01(u / 0.36), choo = clamp01((u - 0.36) / 0.64), fade = 1 - clamp01((u - 0.75) / 0.25);
+  ctx.save();
+  // watery eyes: two drops welling up and running off
+  if (u < 0.75) for (let i = 0; i < 2; i++) {
+    const q = (u * 2.2 + i * 0.5) % 1, dx = (i ? 1 : -1) * sz * 0.35, dy = sz * 0.25 - q * sz * 0.5, s = Math.max(0.045, 3.2 / k) * (0.6 + 0.6 * ah);
+    ctx.globalAlpha = (1 - q) * Math.min(1, ah * 2) * fade;
+    ctx.beginPath(); ctx.moveTo(x + dx, y + dy - s * 1.4); ctx.quadraticCurveTo(x + dx + s, y + dy, x + dx, y + dy + s * 0.6); ctx.quadraticCurveTo(x + dx - s, y + dy, x + dx, y + dy - s * 1.4);
+    ctx.fillStyle = '#9fdcff'; ctx.fill(); ctx.strokeStyle = '#1d5d8a'; ctx.lineWidth = Math.max(0.012, 1 / k); ctx.stroke();
+  }
+  // the spray: pepper and spit blown out along dir, and three jolt lines
+  if (choo > 0) {
+    const c = Math.cos(dir), s = Math.sin(dir);
+    ctx.globalAlpha = fade;
+    for (let i = 0; i < 12; i++) {
+      const b = dir + (hash(i * 2.1) - 0.5) * 1.1, d = sz * (0.3 + (0.6 + hash(i)) * 1.6 * Math.pow(choo, 0.6)), ps = Math.max(0.025, (1.6 + 1.6 * hash(i * 5)) / k);
+      ctx.fillStyle = i % 3 === 0 ? '#e0502a' : i % 3 === 1 ? '#ffb07a' : '#7a1408';
+      ctx.beginPath(); ctx.arc(x + d * Math.cos(b), y + d * Math.sin(b), ps * (1 - 0.4 * choo), 0, TAU); ctx.fill();
+    }
+    if (choo < 0.5) { ctx.strokeStyle = '#fff6e6'; ctx.lineCap = 'round'; ctx.lineWidth = Math.max(0.025, 2.2 / k); for (let i = -1; i <= 1; i++) { const b = dir + Math.PI + i * 0.5, r0 = sz * (0.55 + choo), r1 = r0 + sz * 0.35; ctx.globalAlpha = 1 - choo * 2; ctx.beginPath(); ctx.moveTo(x + r0 * Math.cos(b), y + r0 * Math.sin(b)); ctx.lineTo(x + r1 * Math.cos(b), y + r1 * Math.sin(b)); ctx.stroke(); } }
+    if (choo < 0.6) puff(ctx, x + c * sz * (0.5 + choo), y + s * sz * (0.5 + choo), sz * (0.25 + 0.4 * choo), 2, 0.8 * (1 - choo / 0.6));
+  }
+  // the words, in pixel space over the head
+  const word = (txt, px0, py0, size, fill, a, sc) => {
+    if (a <= 0.01) return;
+    ctx.save(); ctx.translate(px0, py0); ctx.scale(1 / k, -1 / k); ctx.scale(sc, sc);
+    ctx.globalAlpha = a; ctx.font = `700 ${Math.round(size)}px ${SEE_FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round'; ctx.lineWidth = Math.max(3, size * 0.22); ctx.strokeStyle = '#4a1a08'; ctx.strokeText(txt, 0, 0); ctx.fillStyle = fill; ctx.fillText(txt, 0, 0);
+    ctx.restore();
+  };
+  const fs = Math.max(13, Math.min(22, k * 0.42));
+  word('ah...', x - sz * 0.1, y + sz * 0.75 + ah * sz * 0.25, fs * (0.8 + 0.25 * ah), '#ffe6c8', ah * (1 - choo * 2.5), 1 + 0.06 * Math.sin(t * 9));
+  if (choo > 0) word('CHOO!', x + Math.cos(dir) * sz * 0.4, y + sz * 0.95 + choo * sz * 0.3, fs * 1.35, '#ffb07a', fade, choo < 0.15 ? 0.6 + 0.4 * (choo / 0.15) * 1.25 : 1.05 - 0.05 * clamp01((choo - 0.15) / 0.2));
+  ctx.restore();
+}
+
+// ---- in-play state of the polish (render side only; keyed to the sim it belongs to)
+const POL = { sim: null, seen: new WeakSet(), stubs: [], tw: null };
+function polFor(sim) { if (POL.sim !== sim) { POL.sim = sim; POL.seen = new WeakSet(); POL.stubs.length = 0; POL.tw = null; } return POL; }
+// creatures a twister reaches: where each one's head is now (live), for its sneeze
+function sneezers(sim) {
+  const L = [];
+  for (const S of sim.snakes || []) if (!S.gone && S.pts && S.pts.length) L.push({ k: 's', o: S, sz: 0.45 * (S.size || 1) });
+  for (const C of sim.sals || []) if (C.pts && C.pts.length && (!sim.salLive || sim.salLive(C))) L.push({ k: 'c', o: C, sz: 0.5 * (C.size || 1) });
+  if (sim.eagle && !sim.eagle.end) L.push({ k: 'e', o: sim.eagle, sz: 0.8 });
+  for (const F of sim.frogs || []) L.push({ k: 'x', o: F, sz: 0.5 });
+  for (const G of sim.gators || []) if (G.ph !== 'hid' && G.ph !== 'gone' && G.ph !== 'beaten') L.push({ k: 'g', o: G, sz: 0.6 });
+  for (const T of sim.turtles || []) L.push({ k: 'x', o: T, sz: 0.5 });
+  for (const Q of sim.mosqs || []) L.push({ k: 'x', o: Q, sz: 0.45 });
+  return L;
+}
+function headOf(w) { const o = w.o; if (w.k === 's' || w.k === 'c') return o.pts[0] || null; return Number.isFinite(o.x) ? o : null; }
+
+// a point of a ring (any shape) at ring-local angle la and radius-equivalent rad, in world space (A = the ring's angle)
+function onRing(ring, A, la, rad) { const [x, y] = ringPt(ring, la, rad), c = Math.cos(A), s = Math.sin(A); return [x * c - y * s, x * s + y * c]; }
+// The Electromagnet (shock + iron) in the level, 0.8.15: the live ring PULLS and it shows. Chevrons march onto the ring from
+// both sides all the way round (on = they march, off = they are gone), and every iron egg in reach is tied to it by field
+// lines that tighten and brighten as it is hauled in; where an egg clings, sparks jump. No magnet object is drawn: the ring
+// is the magnet (as the magnet power's two eggs are its poles, render/magnet.js). a = strength 0..1.
+const MAG_SEE = 1.9; // m from the ring an iron egg shows its field lines (the sim pulls inside RING_TH / 2 + 0.55)
+export function drawMagnetPull(ctx, sim, ring, k, t, a) {
+  if (!(a > 0)) return;
+  const A = ring.body.getAngle(), n = Math.max(10, Math.round((TAU * ring.r) / 0.55)), lwc = Math.max(0.03, 1.8 / k);
+  ctx.save();
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  // 1) the pull, all round the ring: chevrons close in on it from inside and outside
+  for (const side of [-1, 1]) {
+    for (let i = 0; i < n; i++) {
+      const la = ((i + (side > 0 ? 0.5 : 0)) / n) * TAU;
+      if (!solidLa(ring, la)) continue;
+      for (let j = 0; j < 2; j++) {
+        const u = (t * 1.5 + j * 0.5 + i * 0.37) % 1, d = RING_TH / 2 + 0.06 + (1 - u) * 0.34, w = 0.07 + 0.03 * (1 - u);
+        const [x0, y0] = onRing(ring, A, la - w / ring.r, ring.r + side * (d + 0.07)), [x1, y1] = onRing(ring, A, la, ring.r + side * d), [x2, y2] = onRing(ring, A, la + w / ring.r, ring.r + side * (d + 0.07));
+        ctx.globalAlpha = a * Math.min(1, u * 3) * (0.35 + 0.6 * u);
+        ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.lineTo(x2, y2);
+        ctx.strokeStyle = '#0b2a52'; ctx.lineWidth = lwc * 2.2; ctx.stroke();
+        ctx.strokeStyle = side > 0 ? '#8fdcff' : '#ff9a8a'; ctx.lineWidth = lwc; ctx.stroke();
+      }
+    }
+  }
+  // 2) each iron egg in reach: three field lines from the ring to it, dashes running to the ring; arcs where it clings
+  for (const e of sim.aliveEggs()) {
+    if (!e.iron) continue;
+    const p = e.body.getPosition(), la = Math.atan2(p.y, p.x) - A, [cx, cy] = onRing(ring, A, la, ring.r), gap = Math.hypot(p.x - cx, p.y - cy);
+    if (gap > MAG_SEE) continue;
+    const pull = clamp01(1 - (gap - 0.3) / (MAG_SEE - 0.3)), stuck = gap < RING_TH / 2 + 0.38;
+    for (let j = -1; j <= 1; j++) {
+      const [rx, ry] = onRing(ring, A, la + (j * 0.34) / ring.r, ring.r), mx = (rx + p.x) / 2 + (cx - p.x) * 0.0 + (rx - cx) * 0.9, my = (ry + p.y) / 2 + (ry - cy) * 0.9;
+      ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.quadraticCurveTo(mx, my, rx, ry);
+      ctx.globalAlpha = a * (0.3 + 0.6 * pull);
+      ctx.setLineDash([]); ctx.strokeStyle = 'rgba(11,42,82,0.8)'; ctx.lineWidth = lwc * 2.4; ctx.stroke();
+      ctx.setLineDash([0.09, 0.08]); ctx.lineDashOffset = -t * (0.5 + 0.9 * pull);
+      ctx.strokeStyle = j ? '#8fdcff' : '#ffffff'; ctx.lineWidth = lwc * 1.15; ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    if (stuck) {
+      const R = rng(Math.floor(t * 18) + e.id * 31);
+      ctx.globalAlpha = a;
+      for (let j = 0; j < 2; j++) { const q = R() * TAU; zig(ctx, cx + (R() - 0.5) * 0.3, cy + (R() - 0.5) * 0.3, p.x + Math.cos(q) * 0.2, p.y + Math.sin(q) * 0.2, 4, 0.07, R); boltStroke(ctx, Math.max(0.03, 1.4 / k), 1); }
+    }
+  }
+  ctx.restore();
+}
+
+// the live ring (shock): a blue glow along its solid wall and bolts crawling round it; a = strength 0..1. Also the level
+// card's Electromagnet stage (howto.js).
+export function drawLiveRing(ctx, ring, k, t, a, seed = 0) {
+  const A = ring.body.getAngle();
+    ctx.save();
+    ctx.globalAlpha = a * (0.55 + 0.2 * Math.sin(t * 17));
+    ctx.strokeStyle = 'rgba(110,200,255,1)';
+    ctx.lineWidth = RING_TH + 0.1;
+    const n = Math.ceil((TAU * ring.r) / 0.12);
+    ctx.beginPath();
+    let on = false;
+    for (let i = 0; i <= n; i++) {
+      const la = (i / n) * TAU, s = solidLa(ring, la), [X, Y] = onRing(ring, A, la, ring.r); // 0.8.15: follows square, hex and spiral rings (it drew a circle)
+      if (s) { if (!on) ctx.moveTo(X, Y); else ctx.lineTo(X, Y); }
+      on = s;
+    }
+    ctx.stroke();
+    ctx.globalAlpha = a;
+    const R = rng(Math.floor(t * 20) + seed * 77);
+    ctx.lineJoin = 'round';
+    for (let j = 0; j < 7; j++) {
+      const la = R() * TAU, len = 0.35 + R() * 0.45;
+      if (!solidLa(ring, la) || !solidLa(ring, la + len / ring.r)) continue;
+      ctx.beginPath();
+      for (let q = 0; q <= 6; q++) { const [X, Y] = onRing(ring, A, la + (q / 6) * (len / ring.r), ring.r + (R() - 0.5) * 0.2); q ? ctx.lineTo(X, Y) : ctx.moveTo(X, Y); }
+      boltStroke(ctx, Math.max(0.03, 1.5 / k), 1);
+    }
+    ctx.restore();
+}
+// the wooden decoy egg at world (x, y), h m tall (level card: Bait and switch)
+export function drawDecoyAt(ctx, x, y, h, k, t, rot = 0) { px(ctx, x, y, k, rot, () => paintDecoy(ctx, h * k, t, Math.max(1.6, k * 0.035), false)); }
+
 // Under the eggs: the live ring, scorched sponge, iron bars, frosted thorns, blacked-out doors and portals, the beak.
 export function drawP2Back(ctx, sim, k, t) {
   const P = sim.p2;
@@ -418,49 +789,29 @@ export function drawP2Back(ctx, sim, k, t) {
     ctx.restore();
   }
   // the live ring: lightning crawls round it
-  if (P.shock > 0 && P.shockR >= 0) {
-    const ring = sim.rings[P.shockR], A = ring.body.getAngle(), end = P.shock < 1.5 ? (Math.sin(t * 30) > 0 ? 1 : 0.35) : 1;
-    const a = Math.min(1, P.shock / 0.3, (P2.shock.t - P.shock) / 0.2) * end;
-    ctx.save();
-    ctx.globalAlpha = a * (0.55 + 0.2 * Math.sin(t * 17));
-    ctx.strokeStyle = 'rgba(110,200,255,1)';
-    ctx.lineWidth = RING_TH + 0.1;
-    const n = Math.ceil((TAU * ring.r) / 0.12);
-    ctx.beginPath();
-    let on = false;
-    for (let i = 0; i <= n; i++) {
-      const la = (i / n) * TAU, s = solidLa(ring, la), w = A + la;
-      if (s) { if (!on) ctx.moveTo(ring.r * Math.cos(w), ring.r * Math.sin(w)); else ctx.lineTo(ring.r * Math.cos(w), ring.r * Math.sin(w)); }
-      on = s;
-    }
-    ctx.stroke();
-    ctx.globalAlpha = a;
-    const R = rng(Math.floor(t * 20) + P.shockR * 77);
-    ctx.lineJoin = 'round';
-    for (let j = 0; j < 7; j++) {
-      const la = R() * TAU, len = 0.35 + R() * 0.45;
-      if (!solidLa(ring, la) || !solidLa(ring, la + len / ring.r)) continue;
-      ctx.beginPath();
-      for (let q = 0; q <= 6; q++) { const b = A + la + (q / 6) * (len / ring.r), rr = ring.r + (R() - 0.5) * 0.2; q ? ctx.lineTo(rr * Math.cos(b), rr * Math.sin(b)) : ctx.moveTo(rr * Math.cos(b), rr * Math.sin(b)); }
-      boltStroke(ctx, Math.max(0.03, 1.5 / k), 1);
-    }
-    ctx.restore();
-  }
-  // the laser beak in the middle of the vault, pointing where it last fired (pips: shots left)
+  if (P.shock > 0 && P.shockR >= 0) drawLiveRing(ctx, sim.rings[P.shockR], k, t, Math.min(1, P.shock / 0.3, (P2.shock.t - P.shock) / 0.2) * (P.shock < 1.5 ? (Math.sin(t * 30) > 0 ? 1 : 0.35) : 1), P.shockR);
+  if (P.shock > 0 && P.shockR >= 0 && P.iron > 0) drawMagnetPull(ctx, sim, sim.rings[P.shockR], k, t, Math.min(1, P.shock / 0.3, P.iron / 0.3, (P2.shock.t - P.shock) / 0.25 + 0.05));
+  // the laser cannon in the middle of the vault, turned where it last fired (lights on its belt: shots left). 2026-11-23:
+  // a chunky cartoon cannon (was a brass muzzle): the crystal glows while a shot is ready, the barrel kicks back, the pod
+  // squashes and the crystal goes white-hot as it fires, then a puff of smoke; it shudders through the sweep.
   if (P.laser > 0 && (P.shots > 0 || P.sweep >= 0 || P.beams.length)) {
-    const s = Math.max(0.42, 15 / k) * k, ready = P.shots > 0 && P.sweep < 0;
-    px(ctx, 0, 0, k, P.aim, () => {
-      ctx.save();
-      if (Math.cos(P.aim) < 0) ctx.scale(1, -1); // pointing left: keep the beak the right way up
-      if (ready) { const g = ctx.createRadialGradient(0, 0, 0, 0, 0, s * 0.9); g.addColorStop(0, `rgba(255,90,60,${0.35 + 0.15 * Math.sin(t * 6)})`); g.addColorStop(1, 'rgba(255,90,60,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, s * 0.9, 0, TAU); ctx.fill(); }
-      beak(ctx, s, ready ? 0.5 + 0.5 * Math.sin(t * 8) : 1);
-      ctx.restore();
-    });
-    for (let i = 0; i < P.shots; i++) {
-      const a = P.aim + Math.PI + (i - (P.shots - 1) / 2) * 0.55, r = Math.max(0.3, 11 / k);
-      ctx.beginPath(); ctx.arc(r * Math.cos(a), r * Math.sin(a), Math.max(0.045, 2.6 / k), 0, TAU);
-      ctx.fillStyle = '#ff5a3c'; ctx.fill(); ctx.strokeStyle = OUT; ctx.lineWidth = lw(1.2); ctx.stroke();
-    }
+    const s = Math.max(BEAK_M * k, 24), ready = P.shots > 0 && P.sweep < 0;
+    let heat = ready ? 0.35 + 0.25 * Math.sin(t * 6) : 0.15, rec = 0, puff = 0;
+    for (const B of P.beams) { heat = Math.max(heat, 1 - B.t / 0.5); rec = Math.max(rec, 1 - B.t / 0.18); }
+    const last = P.beams[P.beams.length - 1];
+    if (last && P.sweep < 0) puff = clamp01((last.t - 0.05) / 0.45);
+    if (P.sweep >= 0) { heat = Math.max(heat, Math.min(1, 0.4 + P.sweep * 3) * (0.88 + 0.12 * Math.sin(t * 40))); rec = Math.max(rec, 0.35 + 0.15 * Math.sin(t * 55)); }
+    px(ctx, 0, 0, k, 0, () => drawLaserBeak(ctx, s, heat, rec, t, -P.aim, P.shots, puff)); // px flips y: a world angle a is -a on screen
+  }
+  // thorns the beam cut: a charred stub each, for a second
+  const PL = polFor(sim), cutting = P.laser > 0 || P.sweep >= 0 || P.beams.length > 0;
+  for (const ring of sim.rings) for (const th of ring.thorns) if (!th.alive && !PL.seen.has(th)) { PL.seen.add(th); if (cutting && PL.stubs.length < 24) PL.stubs.push({ ring, th, t0: sim.t }); }
+  for (let i = PL.stubs.length - 1; i >= 0; i--) {
+    const S = PL.stubs[i], u = (sim.t - S.t0) / 1.1;
+    if (u >= 1 || u < 0) { PL.stubs.splice(i, 1); continue; }
+    const th = S.th, w = S.ring.body.getAngle() + th.a, out = th.tip > th.base ? 0 : Math.PI, bx = th.base * Math.cos(w), by = th.base * Math.sin(w);
+    scorchStub(ctx, bx, by, w + out, Math.abs(th.tip - th.base), k, u);
+    if (u < 0.3) beamSparks(ctx, bx + (th.tip - th.base) * 0.3 * Math.cos(w), by + (th.tip - th.base) * 0.3 * Math.sin(w), P.aim, k, t, 6, 1.1 - u * 2);
   }
 }
 
@@ -611,15 +962,21 @@ export function drawP2Front(ctx, sim, k, t) {
     }
   }
   // laser beams (and the sweep)
-  const reach = sim.outerR + 3;
+  const reach = sim.outerR + 3, from = (Math.max(BEAK_M * k, 24) * 0.95) / k; // the beam leaves the cannon's crystal
   const beam = (a, f, w0) => {
-    const c = Math.cos(a), s = Math.sin(a), x0 = 0.3 * c, y0 = 0.3 * s, x1 = reach * c, y1 = reach * s;
+    const c = Math.cos(a), s = Math.sin(a), x0 = from * c, y0 = from * s, x1 = reach * c, y1 = reach * s;
     ctx.save();
     ctx.lineCap = 'round';
     ctx.globalAlpha = f;
     ctx.strokeStyle = 'rgba(255,60,40,0.45)'; ctx.lineWidth = w0 * 2.6; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
     ctx.strokeStyle = '#ff5a3c'; ctx.lineWidth = w0 * 1.1; ctx.stroke();
     ctx.strokeStyle = '#fff4ec'; ctx.lineWidth = w0 * 0.45; ctx.stroke();
+    // the muzzle flash on the crystal: a red ring, a white-hot star, matching the cannon's lens
+    const fr = w0 * (1.6 + 1.4 * f);
+    ctx.fillStyle = 'rgba(255,90,60,0.55)'; ctx.beginPath(); ctx.arc(x0, y0, fr * 1.5, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#fff4ec'; ctx.beginPath();
+    for (let i = 0; i < 10; i++) { const b = a + (i / 10) * TAU, r = i % 2 ? fr * 0.45 : fr * (i % 4 ? 1 : 1.35); ctx.lineTo(x0 + Math.cos(b) * r, y0 + Math.sin(b) * r); }
+    ctx.closePath(); ctx.fill();
     ctx.restore();
   };
   for (const B of P.beams) { const u = B.t / 0.5; beam(B.a, 1 - u * u, P2.laser.w * (1 - 0.4 * u)); }
@@ -629,7 +986,10 @@ export function drawP2Front(ctx, sim, k, t) {
     for (let i = 1; i <= 8; i++) { ctx.globalAlpha = 0.28 * (1 - i / 9); ctx.fillStyle = '#ff6a4a'; ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, sim.outerR + 0.3, a - d * i * 0.07, a - d * (i - 1) * 0.07, d < 0); ctx.closePath(); ctx.fill(); }
     ctx.restore();
     beam(a, 1, P2.laser.w * 1.2);
+    // it cuts through every wall it crosses: sparks spray where the beam meets each ring
+    for (const ring of sim.rings) if (solidLa(ring, a - ring.body.getAngle())) beamSparks(ctx, ring.r * Math.cos(a), ring.r * Math.sin(a), a + (d > 0 ? -Math.PI / 2 : Math.PI / 2), k, t + ring.i, 4, 0.9);
   }
+  for (const B of P.beams) if (B.t < 0.2) for (const ring of sim.rings) if (solidLa(ring, B.a - ring.body.getAngle())) beamSparks(ctx, ring.r * Math.cos(B.a), ring.r * Math.sin(B.a), B.a, k, t + ring.i, 3, 0.8);
   // spin storm: wind streaks whip round the channels
   if (P.spin > 0) {
     const el = P.spinMax - P.spin, f = clamp01(Math.min(el / 0.3, P.spin / 0.4)), d = P.spinDir;
@@ -658,25 +1018,30 @@ export function drawP2Front(ctx, sim, k, t) {
     for (let j = 0; j < 3; j++) { const y = top * (0.3 + 0.2 * j); zig(ctx, (R() - 0.5) * 0.6, y, (R() - 0.5) * 3, y - 1.2, 4, 0.2, R); boltStroke(ctx, Math.max(0.025, 1.2 / k), 1); }
     ctx.restore();
   }
-  // pepper cloud: thick enough to hide what is behind it
-  const C = P.cloud;
-  if (C) {
-    const f = clamp01(Math.min((C.max - C.t) / 0.25, C.t / 0.6));
-    ctx.save();
-    for (let i = 0; i < 14; i++) {
-      const a = hash(i * 1.7) * TAU + t * 0.25 * (i % 2 ? 1 : -1), d = C.r * 0.62 * Math.sqrt(hash(i * 2.3 + 1)), x = C.x + d * Math.cos(a), y = C.y + d * Math.sin(a), r = C.r * (0.38 + 0.2 * hash(i * 3.1)) * (0.75 + 0.25 * f);
-      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
-      g.addColorStop(0, `rgba(${i % 3 ? '168,96,62' : '196,128,86'},${0.95 * f})`);
-      g.addColorStop(0.65, `rgba(150,80,50,${0.85 * f})`);
-      g.addColorStop(1, 'rgba(150,80,50,0)');
-      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill();
+  // pepper cloud: thick enough to hide what is behind it (layered puffs, pepper specks swirling in it)
+  const C = P.cloud, PL = polFor(sim);
+  if (C) drawPepperCloud(ctx, C.x, C.y, C.r, clamp01(Math.min((C.max - C.t) / 0.25, C.t / 0.6)), k, t);
+  // Pepper twister (pepper + spin): the smoke winds into a whirling funnel, then every creature sneezes (render only:
+  // the sim has already flung them out to the rim)
+  if (PL.tw) {
+    const W = PL.tw, el = sim.t - W.t0, wind = P2.twist.wind, AFTER = 0.85;
+    if (el < 0 || el > Math.max(TWIST_T, wind + AFTER) + 0.1) PL.tw = null;
+    else {
+      drawTwister(ctx, W.x, W.y, W.r, el / TWIST_T, k, t);
+      // "ah... ah..." while the sim winds up (P.tw), "CHOO!" on the step it throws them: the spray blows back at the vault's
+      // middle and a streak follows each one from where it stood out to the rim
+      const us = el < wind ? 0.36 * (el / wind) : 0.36 + 0.64 * ((el - wind) / AFTER);
+      for (const w of W.who) {
+        const h = headOf(w);
+        if (!h) continue;
+        if (P.tw > 0) { w.x0 = h.x; w.y0 = h.y; }
+        else if (w.x0 != null && el < wind + 0.3) {
+          const f = 1 - (el - wind) / 0.3, d = Math.hypot(h.x - w.x0, h.y - w.y0);
+          if (d > 0.25) { ctx.save(); ctx.lineCap = 'round'; ctx.globalAlpha = 0.75 * f; ctx.strokeStyle = '#fff6e6'; ctx.lineWidth = w.sz * 0.5 * f; ctx.beginPath(); ctx.moveTo(w.x0 + (h.x - w.x0) * (1 - f) * 0.8, w.y0 + (h.y - w.y0) * (1 - f) * 0.8); ctx.lineTo(h.x, h.y); ctx.stroke(); ctx.restore(); }
+        }
+        if (us < 1) drawSneeze(ctx, h.x, h.y, Math.atan2(-h.y, -h.x), us, k, t, w.sz);
+      }
     }
-    ctx.fillStyle = `rgba(70,14,6,${0.85 * f})`;
-    for (let i = 0; i < 22; i++) {
-      const a = hash(i * 5.3) * TAU + t * (0.4 + hash(i) * 0.6), d = C.r * 0.8 * hash(i * 7.7 + 2);
-      ctx.beginPath(); ctx.arc(C.x + d * Math.cos(a), C.y + d * Math.sin(a), Math.max(0.02, 1.4 / k), 0, TAU); ctx.fill();
-    }
-    ctx.restore();
   }
   drawWarp(ctx, sim, k, t); // the Warp Gate's portals and the armed swirl
 }
@@ -706,7 +1071,7 @@ export function p2Event(ev, fx, api) {
           break;
         case 'laser':
           audio.play('fire_ignite', { vol: 0.7, pitch: 1.8 });
-          once('laser', 'Laser beak! Tap anywhere to fire from the middle of the vault.');
+          once('laser', 'Laser cannon! Tap anywhere to fire from the middle of the vault.');
           break;
         case 'spin':
           audio.play('wind_gust', { vol: 0.9, pitch: 0.8 }); audio.play('motor_tick', { vol: 0.6 });
@@ -728,6 +1093,7 @@ export function p2Event(ev, fx, api) {
       }
       break;
     case 'p2Combo': {
+      if (ev.id === 'twister' && api.sim) { const PL = polFor(api.sim); PL.tw = { t0: api.sim.t, x: ev.x, y: ev.y, r: P2.pepper.r, who: sneezers(api.sim) }; }
       audio.play('combo', { intensity: 1 });
       audio.play('level_win', { vol: 0.4, pitch: 1.4 });
       fx.sparkle(ev.x, ev.y, 24, '#ffd23f');
@@ -741,6 +1107,8 @@ export function p2Event(ev, fx, api) {
     case 'p2Hit': {
       const H = HIT[ev.kind];
       if (!H) break;
+      const twist = api.sim && POL.sim === api.sim && POL.tw && api.sim.t - POL.tw.t0 < P2.twist.wind + 0.3; // the twister acts its own "ah... CHOO!"
+      if (twist && (ev.kind === 'pep' || ev.kind === 'spin')) { if (!(api.sim.p2.tw > 0) && ev.kind === 'pep') fx.smoke(ev.x, ev.y, 3, 'rgba(190,120,80,0.6)'); break; }
       if (!strikeQuiet()) popup(ev.x, ev.y + 0.6, H[0], { color: H[1], size: 17, life: 0.9 });
       if (ev.kind === 'ice') { audio.play('glass_crack', { vol: 0.5, pitch: 1.5 }); fx.chips(ev.x, ev.y, '#dff6ff', 6, 1.6); }
       else if (ev.kind === 'zap') { audio.play('glass_crack', { vol: 0.5, pitch: 2.2 }); fx.sparkle(ev.x, ev.y, 8, '#bfe9ff'); }
@@ -748,6 +1116,25 @@ export function p2Event(ev, fx, api) {
       else if (ev.kind === 'spin') audio.play('wind_gust', { vol: 0.4, pitch: 1.8 });
       break;
     }
+    case 'emagOn': { // the Electromagnet switches on: a clang, a deep buzz, a pulse runs in onto the ring
+      const ring = api.sim && api.sim.rings[ev.ring];
+      audio.play('steel_clang', { vol: 0.7, pitch: 0.6 }); audio.play('thunder', { vol: 0.35, pitch: 0.7 });
+      if (ring) { fx.wave(0, 0, ring.r, '#8fdcff', 0.5, 0.2); fx.wave(0, 0, ring.r, '#ffffff', 0.3, 0.08); }
+      fx.shake = Math.max(fx.shake, 0.2);
+      break;
+    }
+    case 'emagHum': audio.play('gear_whir', { vol: 0.22, pitch: 0.5 }); audio.play('jelly_zap', { vol: 0.12, pitch: 0.6 }); break;
+    case 'emagOff': { // ...and off: it lets go with a clunk, a few sparks fall off the ring
+      const ring = api.sim && api.sim.rings[ev.ring];
+      audio.play('steel_on', { vol: 0.5, pitch: 0.6 }); audio.play('release', { vol: 0.5, pitch: 0.7 });
+      if (ring) for (let i = 0; i < 6; i++) { const q = (i / 6) * TAU + 0.4; fx.sparkle(ring.r * Math.cos(q), ring.r * Math.sin(q), 3, '#bfe9ff'); }
+      break;
+    }
+    case 'p2Sneeze': // the Pepper twister's sneeze: one big blast from the funnel, the camera jolts
+      audio.play('squish', { intensity: 1, pitch: 1.5 }); audio.play('wind_gust', { vol: 0.9, pitch: 1.3 }); audio.play('bubble_pop', { vol: 0.8, pitch: 0.55 });
+      fx.wave(ev.x, ev.y, (api.sim && api.sim.outerR ? api.sim.outerR : 4) * 1.05, '#ffd9b0', 0.45, 0.16);
+      fx.shake = Math.max(fx.shake, 0.4);
+      break;
     case 'p2Fling':
       fx.burst(ev.x, ev.y, 10, (i, a, b) => ({ x: ev.x + (ev.x2 - ev.x) * a, y: ev.y + (ev.y2 - ev.y) * a, vx: (b - 0.5) * 1.5, vy: (b - 0.5) * 1.5, drag: 3, life: 0.45, size: 0.05, color: '#e8fff8' }));
       break;
@@ -782,7 +1169,7 @@ export function p2Event(ev, fx, api) {
       fx.sparkle(ev.x, ev.y, 10, '#ffcf8a');
       break;
     case 'decoyPop':
-      if (ev.why === 'snake' || ev.why === 'eagle') { audio.play('wood_break', { vol: 0.8 }); fx.chips(ev.x, ev.y, '#d4914c', 12, 2.6); popup(ev.x, ev.y + 0.6, 'Fooled!', { color: '#ffcf8a', size: 22 }); }
+      if (ev.why === 'snake' || ev.why === 'eagle' || ev.why === 'gator' || ev.why === 'turtle') { audio.play('wood_break', { vol: 0.8 }); fx.chips(ev.x, ev.y, '#d4914c', 12, 2.6); popup(ev.x, ev.y + 0.6, 'Fooled!', { color: '#ffcf8a', size: 22 }); }
       else { audio.play('bubble_pop', { pitch: 0.7 }); fx.chips(ev.x, ev.y, '#d4914c', 6, 1.6); }
       if (ev.pepper && ev.why !== 'time') { audio.play('squish', { intensity: 0.8, pitch: 0.5 }); fx.smoke(ev.x, ev.y, 8, 'rgba(170,80,40,0.7)'); }
       break;

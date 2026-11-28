@@ -4,6 +4,8 @@
 // The top face is EXACTLY the physics band (ri..ro); the wall and shadow only ever show below a ring, never on the
 // surface an egg rests on, so nothing about where eggs sit changes.
 // One painter serves circles (fast arcs) and the shaped vaults (square / hex / spiral polylines via ringPt).
+import { stamp } from './stamp.js';
+import { freeCanvas } from './cvfree.js';
 import { RING_TH, TAU, rng } from '../sim/geom.js';
 import { ringPt, ringSpd, ringReach, ringNormal } from '../sim/shapes.js';
 
@@ -24,15 +26,20 @@ export function rgbOf(c) {
   RGB.set(c, v);
   return v;
 }
-const MIX = new Map();
+const MIX = new Map(); // a -> b -> [t, alpha, result, ...]: no key string is built on a hit (mix runs thousands of times a frame)
+let MIXN = 0;
 export function mix(a, b, t, alpha) {
-  const key = a + '|' + b + '|' + t + '|' + (alpha ?? '');
-  let v = MIX.get(key);
-  if (v) return v;
+  let m1 = MIX.get(a);
+  if (!m1) MIX.set(a, (m1 = new Map()));
+  let list = m1.get(b);
+  if (list) {
+    const al = alpha == null ? -1 : alpha;
+    for (let i = 0; i < list.length; i += 3) if (list[i] === t && list[i + 1] === al) return list[i + 2];
+  } else m1.set(b, (list = []));
   const p = rgbOf(a), q = rgbOf(b), r = Math.round(p[0] + (q[0] - p[0]) * t), g = Math.round(p[1] + (q[1] - p[1]) * t), bl = Math.round(p[2] + (q[2] - p[2]) * t);
-  v = alpha == null ? `rgb(${r},${g},${bl})` : `rgba(${r},${g},${bl},${alpha})`;
-  if (MIX.size > 4000) MIX.clear();
-  MIX.set(key, v);
+  const v = alpha == null ? `rgb(${r},${g},${bl})` : `rgba(${r},${g},${bl},${alpha})`;
+  if (++MIXN > 4000) { MIX.clear(); MIXN = 0; m1 = new Map(); MIX.set(a, m1); m1.set(b, (list = [])); }
+  list.push(t, alpha == null ? -1 : alpha, v);
   return v;
 }
 export const lighten = (c, t, a) => mix(c, '#ffffff', t, a);
@@ -44,6 +51,21 @@ function stateOf(ring) {
   let s = STATE.get(ring);
   if (!s) STATE.set(ring, (s = { memo: new Map(), canvas: null, key: '', scale: 0 }));
   return s;
+}
+// 0.8.10: a level that ends gives its ring pictures back (a face and a body per ring, up to 16 MB each on a sharp
+// screen) instead of leaving them for the garbage collector. Called with the old sim's rings when a new one is made.
+// keep: the rings of the level that is starting. Every other ring that still holds a picture lets it go: the old level's,
+// and the rings of level card scenes and demos, which belong to no sim.
+const HELD = new Set(); // rings with a picture (strong on purpose: they are let go here, at the next level start)
+export function releaseRings(keep) {
+  const K = new Set(keep || []);
+  for (const ring of HELD) {
+    if (K.has(ring)) continue;
+    HELD.delete(ring);
+    const S = STATE.get(ring); if (!S) continue;
+    freeCanvas(S.canvas); freeCanvas(S.bcv);
+    S.canvas = null; S.key = ''; S.scale = 0; S.bcv = null; S.bkey = ''; S.body = null; S.memo.clear();
+  }
 }
 // Polyline for a shaped ring at radius rad from a0 to a1 (ends nudged inside so a spiral end stays on its own side).
 function poly(ring, rad, a0, a1) {
@@ -354,6 +376,7 @@ function faceCanvas(ring, arcs, col, st, scale) {
   c.setTransform(sc, 0, 0, sc, size / 2, size / 2);
   paintFace(c, ring, arcs, col, st, 1 / sc);
   S.canvas = cv; S.key = key; S.scale = scale; S.half = size / 2 / sc;
+  HELD.add(ring);
   ringCache.builds++;
   return S;
 }
@@ -361,9 +384,56 @@ function faceCanvas(ring, arcs, col, st, scale) {
 // ---------- the ring body (called with ctx in world space, not rotated) ----------
 // up: the water world, where eggs float up and rest on the underside of a ring: the slab's wall shows above the face
 // (seen from below), so it never covers the surface an egg rests on.
+// 2026-11-19 speed pass (mykee: rings "stuck" on a 2-3 year old phone): the whole slab (shadow, wall, outline, face,
+// bevel: ~10 thick strokes per ring) is painted once onto an offscreen canvas and stamped each frame, rotated. The
+// shadow and wall hang straight DOWN the screen, so a stamp turned away from the angle it was painted at would swing
+// them round; it is repainted once the ring has turned BODY.turn rad from that angle (0.2 rad: the wall is off by
+// under a pixel). A still ring is never repainted; a turning one a few times a second instead of every frame.
+export const bodyCache = { on: true, builds: 0, turn: 0.2 };
 export function drawRingBody(ctx, ring, col, st, k, up) {
-  const r = ring.r, ri = r - RING_TH / 2, ro = r + RING_TH / 2, px = 1 / k, A = ring.body.getAngle();
-  const arcs = ringArcs(ring);
+  const A = ring.body.getAngle(), arcs = ringArcs(ring);
+  if (bodyCache.on && ringCache.on && typeof document !== 'undefined' && ctx.getTransform) {
+    let B = null;
+    try { const m = ctx.getTransform(); B = bodyCanvas(ring, arcs, col, st, k, up, A, Math.hypot(m.a, m.b)); } catch (e) { B = null; }
+    if (B) {
+      ctx.save(); ctx.rotate(A - B.A); ctx.drawImage(B.canvas, -B.half, -B.half, B.half * 2, B.half * 2); ctx.restore();
+      return arcs;
+    }
+  }
+  paintBody(ctx, ring, arcs, col, st, k, up, A);
+  return arcs;
+}
+function bodyCanvas(ring, arcs, col, st, k, up, A, scale) {
+  const S = stateOf(ring), key = faceKey(ring, col) + '|' + (up ? 1 : 0) + '|' + (st.alpha || 1) + '|' + (st.shine ? 1 : 0);
+  let d = A - S.bA; d -= Math.round(d / TAU) * TAU;
+  if (S.bcv && S.bkey === key && Math.abs(d) < bodyCache.turn && scale <= S.bhi * 1.04 && scale > S.bscale * 0.6) return S.body;
+  // tools/perf87/why.cjs sets bodyCache.why = {} to count why sprites re-bake (off by default: null)
+  if (bodyCache.why) { const w = !S.bcv ? 'new' : S.bkey !== key ? 'key' : Math.abs(d) >= bodyCache.turn ? 'turn' : 'scale'; bodyCache.why[w] = (bodyCache.why[w] || 0) + 1; if (w === 'key') bodyCache.why[S.bkey + ' -> ' + key] = 1; if (w === 'scale') bodyCache.why['sc ' + (scale / S.bscale).toFixed(2)] = 1; }
+  const half = (ring.prof ? ringReach(ring) : ring.r) + RING_TH / 2 + 0.34;
+  let sc = scale * 1.15; // the same headroom as the face: the camera eases in and out, rebuild only on a real zoom
+  const MAX = 2048;
+  if (2 * half * sc > MAX) sc = MAX / (2 * half);
+  let size = Math.ceil(2 * half * sc);
+  const cv = S.bcv || document.createElement('canvas');
+  // 2026-11-20 speed: keep the canvas we have when it is big enough (resizing it reallocates the picture on the graphics
+  // chip, a hitch on a phone, and the camera's small zooms used to resize it 1-3 times a second); grow in steps of 64
+  if (cv.width >= size && cv.width <= size * 1.45 && cv.width === cv.height) { size = cv.width; sc = size / (2 * half); }
+  else { size = Math.min(MAX, Math.ceil(size / 64) * 64); sc = size / (2 * half); cv.width = size; cv.height = size; }
+  const c = cv.getContext('2d');
+  if (!c) return null;
+  c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, size, size);
+  c.setTransform(sc, 0, 0, sc, size / 2, size / 2);
+  paintBody(c, ring, arcs, col, st, k, up, A);
+  // 2026-11-20 (perf87): zooming OUT is judged against the scale asked for, not the scale of a larger canvas kept from
+  // before (that one can be up to 1.45x bigger, so a slow zoom-out failed the 0.6 test on EVERY frame: levels 27 and
+  // 44 re-baked a ring body ~50 times a second while the camera eased out); zooming IN against the sharper of the two
+  S.bcv = cv; S.bkey = key; S.bscale = scale * 1.15; S.bhi = Math.max(sc, scale * 1.15); S.bA = A; S.body = { canvas: cv, half: size / 2 / sc, A };
+  HELD.add(ring);
+  bodyCache.builds++;
+  return S.body;
+}
+function paintBody(ctx, ring, arcs, col, st, k, up, A) {
+  const r = ring.r, ri = r - RING_TH / 2, ro = r + RING_TH / 2, px = 1 / k;
   const glassy = (st.alpha || 1) < 1;
   ctx.lineCap = 'butt';
   ctx.lineJoin = 'round';
@@ -433,7 +503,6 @@ export function drawRingBody(ctx, ring, col, st, k, up) {
     ctx.strokeStyle = g2; ringLine(ctx, ring, ri + bw / 2, a0 + c0, a1 - c1); ctx.stroke();
   }
   ctx.restore();
-  return arcs;
 }
 
 // Charring where fire is working on a piece (dynamic, over the face). ctx rotated to the ring.
@@ -451,6 +520,8 @@ export function drawRingBurn(ctx, ring) {
 
 // ---------- sponge pads: a fat foam cushion wrapped round the ring; eggs sink into it, it jiggles on a hit ----------
 // ctx rotated to the ring. eggs: world positions.
+const PADS = new WeakMap(); // ring -> { A: angle the pad stamp was painted at, ver }
+const PADC = new WeakMap(); // ring -> Map(run key -> static look: geometry + Path2D shapes, rebuilt only when an egg presses or a hit wobbles)
 export function drawPads(ctx, ring, theme, px, t, eggs, simT) {
   const runs = [];
   let cur = null;
@@ -464,64 +535,115 @@ export function drawPads(ctx, ring, theme, px, t, eggs, simT) {
   const near = eggs.map((e) => ({ x: e.x * cA - e.y * sA, y: e.x * sA + e.y * cA }));
   const base = theme?.palette?.sponge || '#ffd257';
   const lit = lighten(base, 0.45), deep = mix(base, '#b0600a', 0.55), line = mix(base, '#4a2600', 0.8);
+  const softC = mix(deep, base, 0.2, 0.55), hiC = lighten(base, 0.5, 0.7), lipC = lighten(base, 0.6, 0.6), holeC = mix(deep, '#5a2c00', 0.35, 0.8);
   const P = (rad, a) => ringPt(ring, a, rad);
   const dx = -Math.sin(A) * 0.06, dy = -Math.cos(A) * 0.06; // world-down in ring space: the cushion's thickness
+  let cache = PADC.get(ring);
+  if (!cache) PADC.set(ring, (cache = new Map()));
+  let dynAny = false, bx0 = 1e9, by0 = 1e9, bx1 = -1e9, by1 = -1e9;
   for (const Rn of runs) {
-    const n = Math.max(6, Math.ceil(((Rn.a1 - Rn.a0) * (ring.prof ? ringReach(ring) : r)) / 0.03));
-    const top = new Array(n + 1), out = new Array(n + 1);
-    for (let i = 0; i <= n; i++) {
-      const th = Rn.a0 + ((Rn.a1 - Rn.a0) * i) / n, sp = ringSpd(ring, th), ed = Math.min(th - Rn.a0, Rn.a1 - th) * sp;
-      const bump = Math.abs(Math.sin(((th - Rn.a0) * sp * Math.PI) / 0.24));
-      let h = PAD_H + 0.03 * bump;
-      if (ed < 0.1) h *= 0.25 + 0.75 * Math.sqrt(ed / 0.1);
-      const s0 = P(ri - 0.27, th);
-      for (const q of near) { const d = Math.hypot(q.x - s0[0], q.y - s0[1]); if (d < 0.3) h -= 0.085 * (1 - d / 0.3) * (1 - d / 0.3); }
-      const seg = Rn.segs[Math.min(Rn.segs.length - 1, Math.floor(((th - Rn.a0) / (Rn.a1 - Rn.a0)) * Rn.segs.length))], dt = simT - seg.hitT;
-      if (dt >= 0 && dt < 0.6) h += Math.min(0.045, seg.hitV * 0.009) * Math.exp(-dt * 7) * Math.sin(dt * 45 + th * 12);
-      top[i] = P(ri - Math.max(0.015, h), th);
-      out[i] = P(ro + 0.014 * bump * Math.min(1, ed / 0.1), th);
+    const ck = Rn.a0.toFixed(5) + '|' + Rn.a1.toFixed(5), n = Math.max(6, Math.ceil(((Rn.a1 - Rn.a0) * (ring.prof ? ringReach(ring) : r)) / 0.03));
+    let C = cache.get(ck);
+    if (!C || C.n !== n) {
+      // static part: sample points, the resting heights, the pore paths (none of it depends on eggs or the ring's angle)
+      C = { n, s0: [], h0: [], bump: [], ed: [], out: [], pores: null, look: null, dyn: true, ver: 0 };
+      for (let i = 0; i <= n; i++) {
+        const th = Rn.a0 + ((Rn.a1 - Rn.a0) * i) / n, sp = ringSpd(ring, th), ed = Math.min(th - Rn.a0, Rn.a1 - th) * sp;
+        const bump = Math.abs(Math.sin(((th - Rn.a0) * sp * Math.PI) / 0.24));
+        let h = PAD_H + 0.03 * bump;
+        if (ed < 0.1) h *= 0.25 + 0.75 * Math.sqrt(ed / 0.1);
+        C.s0.push(P(ri - 0.27, th)); C.h0.push(h); C.bump.push(bump); C.ed.push(ed);
+        C.out.push(P(ro + 0.014 * bump * Math.min(1, ed / 0.1), th));
+      }
+      const lip = new Path2D(), hole = new Path2D();
+      const pr = rng(Math.round(Rn.a0 * 1000) + ring.i * 97), pn = Math.ceil(((Rn.a1 - Rn.a0) * r) / 0.05);
+      for (let i = 0; i < pn; i++) {
+        const th = Rn.a0 + (0.04 + 0.92 * pr()) * (Rn.a1 - Rn.a0), q = P(ro - 0.04 - pr() * (ro - ri + PAD_H - 0.09), th), sz = 0.011 + pr() * 0.013;
+        lip.moveTo(q[0] + sz, q[1]); lip.arc(q[0], q[1], sz, 0, TAU);
+        hole.moveTo(q[0] + sz * 0.85, q[1]); hole.arc(q[0], q[1], sz * 0.85, 0, TAU);
+      }
+      C.pores = { lip, hole };
+      // 2026-11-20 (perf87): the run's bounding box, once (it was measured again every frame, and the egg test below
+      // walked every sample point for every egg: ~80 KB of garbage a frame on a phone's unoptimised first pass)
+      C.bx0 = 1e9; C.by0 = 1e9; C.bx1 = -1e9; C.by1 = -1e9;
+      for (const L of [C.out, C.s0]) for (const q of L) { if (q[0] < C.bx0) C.bx0 = q[0]; if (q[0] > C.bx1) C.bx1 = q[0]; if (q[1] < C.by0) C.by0 = q[1]; if (q[1] > C.by1) C.by1 = q[1]; }
+      cache.set(ck, C);
     }
-    const shape = (ox, oy) => {
-      ctx.beginPath();
-      for (let i = 0; i <= n; i++) { if (i) ctx.lineTo(out[i][0] + ox, out[i][1] + oy); else ctx.moveTo(out[i][0] + ox, out[i][1] + oy); }
-      for (let i = n; i >= 0; i--) ctx.lineTo(top[i][0] + ox, top[i][1] + oy);
-      ctx.closePath();
-    };
-    ctx.lineJoin = 'round';
-    // thickness (darker foam below) with its outline
-    shape(dx, dy);
-    ctx.fillStyle = deep; ctx.fill();
-    ctx.strokeStyle = line; ctx.lineWidth = Math.max(2.4 * px, 0.03); ctx.stroke();
-    shape(dx / 2, dy / 2);
-    ctx.fillStyle = deep; ctx.fill();
-    // top face
-    shape(0, 0);
-    ctx.strokeStyle = line; ctx.lineWidth = Math.max(2.4 * px, 0.03); ctx.stroke();
-    ctx.fillStyle = base; ctx.fill();
-    ctx.save();
-    ctx.clip();
-    // soft form: light on the puffy inner face, warm shade where it tucks under the ring's outer side
-    ctx.lineCap = 'round';
-    ctx.strokeStyle = mix(deep, base, 0.2, 0.55); ctx.lineWidth = 0.1;
-    ctx.beginPath(); for (let i = 0; i <= n; i++) { if (i) ctx.lineTo(out[i][0], out[i][1]); else ctx.moveTo(out[i][0], out[i][1]); } ctx.stroke();
-    ctx.strokeStyle = lighten(base, 0.5, 0.7); ctx.lineWidth = 0.085;
-    ctx.beginPath(); for (let i = 0; i <= n; i++) { if (i) ctx.lineTo(top[i][0], top[i][1]); else ctx.moveTo(top[i][0], top[i][1]); } ctx.stroke();
-    // pores: dark hole, light lower lip (pressed into the foam)
-    const pr = rng(Math.round(Rn.a0 * 1000) + ring.i * 97), pn = Math.ceil(((Rn.a1 - Rn.a0) * r) / 0.05);
-    for (let i = 0; i < pn; i++) {
-      const th = Rn.a0 + (0.04 + 0.92 * pr()) * (Rn.a1 - Rn.a0), q = P(ro - 0.04 - pr() * (ro - ri + PAD_H - 0.09), th), s = 0.011 + pr() * 0.013;
-      ctx.fillStyle = lighten(base, 0.6, 0.6);
-      ctx.beginPath(); ctx.arc(q[0] + dx * 0.1, q[1] + dy * 0.1, s, 0, TAU); ctx.fill();
-      ctx.fillStyle = mix(deep, '#5a2c00', 0.35, 0.8);
-      ctx.beginPath(); ctx.arc(q[0], q[1], s * 0.85, 0, TAU); ctx.fill();
+    // does anything press or wobble this run right now?
+    let dyn = false;
+    for (const seg of Rn.segs) { const d = simT - seg.hitT; if (d >= 0 && d < 0.6) { dyn = true; break; } }
+    if (!dyn && near.length) {
+      for (let j = 0; j < near.length && !dyn; j++) {
+        const qx = near[j].x, qy = near[j].y;
+        if (qx < C.bx0 - 0.3 || qx > C.bx1 + 0.3 || qy < C.by0 - 0.3 || qy > C.by1 + 0.3) continue; // nowhere near this run
+        for (let i = 0; i <= n; i++) { const s0 = C.s0[i], ex = qx - s0[0], ey = qy - s0[1]; if (ex * ex + ey * ey < 0.09) { dyn = true; break; } }
+      }
     }
-    ctx.restore();
-    // crisp crest highlight along the puffy edge
-    ctx.strokeStyle = 'rgba(255,252,225,0.95)';
-    ctx.lineWidth = Math.max(1.3 * px, 0.016);
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    for (let i = 1; i < n; i++) { const x = top[i][0] * 0.82 + out[i][0] * 0.18, y = top[i][1] * 0.82 + out[i][1] * 0.18; if (i > 1) ctx.lineTo(x, y); else ctx.moveTo(x, y); }
-    ctx.stroke();
+    Rn.C = C; Rn.dyn = dyn; Rn.n = n; dynAny = dynAny || dyn;
+    if (C.bx0 < bx0) bx0 = C.bx0; if (C.bx1 > bx1) bx1 = C.bx1; if (C.by0 < by0) by0 = C.by0; if (C.by1 > by1) by1 = C.by1;
   }
+  // 2026-11-20 speed: a pad nothing presses is stamped (painted once per 0.2 rad of turn, see stamp.js)
+  const paintRuns = (ctx) => {
+    for (const Rn of runs) {
+      const C = Rn.C, dyn = Rn.dyn, n = Rn.n;
+    let L = C.look;
+      if (dyn || !L) {
+        const top = new Array(n + 1);
+        for (let i = 0; i <= n; i++) {
+          const th = Rn.a0 + ((Rn.a1 - Rn.a0) * i) / n;
+          let h = C.h0[i];
+          const s0 = C.s0[i];
+          for (const q of near) { const d = Math.hypot(q.x - s0[0], q.y - s0[1]); if (d < 0.3) h -= 0.085 * (1 - d / 0.3) * (1 - d / 0.3); }
+          const seg = Rn.segs[Math.min(Rn.segs.length - 1, Math.floor(((th - Rn.a0) / (Rn.a1 - Rn.a0)) * Rn.segs.length))], dt = simT - seg.hitT;
+          if (dt >= 0 && dt < 0.6) h += Math.min(0.045, seg.hitV * 0.009) * Math.exp(-dt * 7) * Math.sin(dt * 45 + th * 12);
+          top[i] = P(ri - Math.max(0.015, h), th);
+        }
+        const out = C.out;
+        const shape = new Path2D(), topLine = new Path2D(), outLine = new Path2D(), crest = new Path2D();
+        for (let i = 0; i <= n; i++) { if (i) { shape.lineTo(out[i][0], out[i][1]); outLine.lineTo(out[i][0], out[i][1]); } else { shape.moveTo(out[i][0], out[i][1]); outLine.moveTo(out[i][0], out[i][1]); } }
+        for (let i = n; i >= 0; i--) { shape.lineTo(top[i][0], top[i][1]); if (i === n) topLine.moveTo(top[i][0], top[i][1]); else topLine.lineTo(top[i][0], top[i][1]); }
+        shape.closePath();
+        for (let i = 1; i < n; i++) { const x = top[i][0] * 0.82 + out[i][0] * 0.18, y = top[i][1] * 0.82 + out[i][1] * 0.18; if (i > 1) crest.lineTo(x, y); else crest.moveTo(x, y); }
+        L = { shape, topLine, outLine, crest };
+        if (!dyn) C.look = L; // resting look: keep it
+      }
+      if (dyn) C.look = null;
+      ctx.lineJoin = 'round';
+      // thickness (darker foam below) with its outline
+      ctx.translate(dx, dy);
+      ctx.fillStyle = deep; ctx.fill(L.shape);
+      ctx.strokeStyle = line; ctx.lineWidth = Math.max(2.4 * px, 0.03); ctx.stroke(L.shape);
+      ctx.translate(-dx / 2, -dy / 2);
+      ctx.fillStyle = deep; ctx.fill(L.shape);
+      ctx.translate(-dx / 2, -dy / 2);
+      // top face
+      ctx.strokeStyle = line; ctx.lineWidth = Math.max(2.4 * px, 0.03); ctx.stroke(L.shape);
+      ctx.fillStyle = base; ctx.fill(L.shape);
+      ctx.save();
+      ctx.clip(L.shape);
+      // soft form: light on the puffy inner face, warm shade where it tucks under the ring's outer side
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = softC; ctx.lineWidth = 0.1; ctx.stroke(L.outLine);
+      ctx.strokeStyle = hiC; ctx.lineWidth = 0.085; ctx.stroke(L.topLine);
+      // pores: dark hole, light lower lip (pressed into the foam)
+      ctx.fillStyle = lipC;
+      ctx.translate(dx * 0.1, dy * 0.1); ctx.fill(C.pores.lip); ctx.translate(-dx * 0.1, -dy * 0.1);
+      ctx.fillStyle = holeC; ctx.fill(C.pores.hole);
+      ctx.restore();
+      // crisp crest highlight along the puffy edge
+      ctx.strokeStyle = 'rgba(255,252,225,0.95)';
+      ctx.lineWidth = Math.max(1.3 * px, 0.016);
+      ctx.lineCap = 'round';
+      ctx.stroke(L.crest);
+  }
+  };
+  if (!dynAny) {
+    let ps = PADS.get(ring);
+    let d = A - (ps ? ps.A : A); d -= Math.round(d / TAU) * TAU;
+    if (!ps || Math.abs(d) > 0.2) PADS.set(ring, (ps = { A, ver: (ps ? ps.ver : 0) + 1 }));
+    const key = runs.map((Rn) => Rn.a0.toFixed(4) + ':' + Rn.a1.toFixed(4)).join(',') + '|' + base + '|' + ps.ver;
+    if (stamp(ctx, ring, key, bx0 - 0.15, by0 - 0.15, bx1 + 0.15, by1 + 0.15, paintRuns)) return;
+  }
+  paintRuns(ctx);
+
 }

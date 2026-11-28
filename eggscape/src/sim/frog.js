@@ -17,8 +17,27 @@
 // It always stands upright against gravity: side -1 = on the inner face of its ring (a floor in the lower half), +1 = on the
 // outer face (a floor in the upper half). When a turning ring carries it past the horizon so its surface becomes a ceiling,
 // it lets go and drops (a somersault) to the opposite wall of the channel instead of hanging.
+//
+// 0.8.18 (the owner: "the frog should have its own set of things ... it will probably steal the egg with the tongue"):
+//   THE SNATCH. An egg within FROG_MODE.snReach of its mouth, in its channel or the one next to it, with a clear line (no
+//     ring wall, thorn or barrier between: a ray against the rings' fixtures) catches its eye: it locks on (the 'lick'
+//     phase with lk 'egg': eyes bulge, it licks its lips, the throat swells; snWarn s, longer on Easy), then the tongue
+//     shoots. Clear line: it sticks and reels the egg into its cheeks (egg.hc = 4: the body is switched off, so nothing
+//     can crack it in there; frogCarry keeps it at the cheek). It hops one ring INWARD with it (a setback, never a loss)
+//     and spits it out ("ptoo", frogRelease) FROG.hold s after the grab, or at once when it is scared, bopped, hit by a
+//     power, or its ring is turned briskly (F.spin, a leaky sum of degrees: it gets dizzy). It never eats an egg.
+//     Fair: at most one egg in the mouth, snCD s between snatches, snMax a level (Easy: one; a level's frog.sn caps it
+//     lower: its first level teaches it with one), none in the last snTail s.
+//   THE BONK (the counter). A wall turned between frog and egg when the tongue shoots: it slaps the wall and snaps back
+//     into its face; it sits dizzy for bonkStun s (the stun state: it hops and licks nothing, plugs what it plugged).
+//   THE BELLY BOP. An egg landing hard on it (bopV) makes it cough up what it holds: the held egg is spat out, a
+//     swallowed orb (F.belly: it licks no other orb while it has one) pops back out as a normal orb. It looks offended.
+//   THE DECOY. A decoy (the power) or a hatched chick near it is what it hunts for a while instead of the eggs (frogAim).
+// Events for the art and the lessons: frogLick {kind: 'egg', ring: the ring that answers it}, frogSnatch, frogBonk,
+// frogSpit {why}, frogBop, frogCough {orb}, frogBurp {orb}.
 import { Vec2, Polygon } from 'planck';
 import { RING_TH, wrap, clamp } from './geom.js';
+import { dyn } from '../data/dynamism.js'; // 0.8.19 the frog's temper
 
 export const FROG = {
   w: 1.13, // m, body width (a gap is 0.78 wide: a frog in it covers it with room to spare). v3.5: art is 1.09 m per 100 units
@@ -26,15 +45,27 @@ export const FROG = {
   reach: 2.4, scareReach: 3.6, // m of arc to the gap it hops through
   tongue: 1.5, lickWarn: 0.5, tongueT: 0.4, gulpT: 0.65, lickCD: 4, // m, s
   scareR: 1.7, scareCD: 4, scareHop: 1.5, // m, s, height factor of the escape hop
+  hunt: 2.5, // s: an egg in another channel brings the next hop forward to this gap since the last one (0.8.10: the frog hunts)
   grab: 0.35, // fraction of the tongue phase at which it reaches its prey
   hang: 0.12, // sin(angle) past which a frog's surface is a ceiling and it drops
   low: -0.3, // a gap must sit below this sin(angle) (the lower part of the vault) to be hopped through
+  // 0.8.18 the snatch (see the header)
+  snTongue: 0.55, stuffT: 0.5, hold: 3, spitT: 0.5, spitAt: 0.4, // s: the egg tongue (slower than the orb lick), cheeks filling, held in the cheeks, the spit (it lets go at spitAt of it)
+  snTail: 6, // s of fuse left under which it never locks on an egg
+  bonkStun: 3, spinStun: 1.6, spinTau: 0.45, // s dizzy after a bonk / a brisk turn of its ring; the leak of the turn sum
+  bopV: 1.3, bopCD: 0.8, offT: 1.4, // m/s an egg landing on it that counts as a bop; s between bops; s it looks offended
+  bellyT: 3, // s its belly glows the colour of a swallowed orb (then a soft glow while it still holds it)
+  decoyR: 4, // m: a hatched chick this close is what it hunts instead of the eggs
 };
+// where the egg sits in its cheeks, from the feet: along the surface (forward) and up the normal, m (render/frog.js draws it there)
+export const FROG_CHEEK = { f: 0.3, u: 0.3 };
 // per mode: every = hop gap x, lick = lick gap x, tongue = tongue length (m), warn = telegraph x
+// 0.8.18 snatch: snReach (m, mouth to the egg's middle), snWarn (s the lock-on lasts), snCD (s between snatches), snMax (a
+// level), dizzy (deg of its ring turned within about spinTau s that makes it spit)
 export const FROG_MODE = {
-  easy: { every: 1.4, lick: 1.6, tongue: 1.1, warn: 1.3 },
-  medium: { every: 1, lick: 1, tongue: 1.5, warn: 1 },
-  hard: { every: 0.8, lick: 0.8, tongue: 1.6, warn: 0.85 },
+  easy: { every: 1.4, lick: 1.6, tongue: 1.1, warn: 1.3, snReach: 1.2, snWarn: 1.4, snCD: 99, snMax: 1, dizzy: 10 },
+  medium: { every: 1, lick: 1, tongue: 1.5, warn: 1, snReach: 1.45, snWarn: 0.95, snCD: 8, snMax: 3, dizzy: 14 },
+  hard: { every: 0.8, lick: 0.8, tongue: 1.6, warn: 0.85, snReach: 1.55, snWarn: 0.8, snCD: 6, snMax: 4, dizzy: 18 },
 };
 const CAT_FROG = 256, MASK_FROG = 2; // collides with eggs only (CAT.EGG = 2, and sim.js adds this category to the egg mask)
 // polygons in the frog's frame (x along the surface, y out of it, feet at y = 0): a dome when sitting on a floor,
@@ -62,6 +93,10 @@ export const frogMethods = {
         hk: '', hr: 0, hg: 0, sri: 0, sla: 0, sr: 0, ti: 0, tla: 0, tr: 0, tpl: -1, hd: 0.6, hh: 1,
         lk: '', lx: 0, ly: 0, lid: 0, lty: '', hit: 0, got: 0, pk: '', pty: '', px: 0, py: 0,
         frz: 0, frzMax: 0, stn: 0, stnMax: 0, zapT: 0, // frozen / stunned / zap flash: seconds left (frog: powers, rooster)
+        // 0.8.18: the egg in its cheeks (id, -1 none), s since the grab, hopped inward with it, where the tongue caught it;
+        // snatch cooldown and count; the bonk (1 shot at a wall, 2 slapped); its ring's leaky turn sum (deg); a bop to
+        // handle, its cooldown, s offended; the swallowed orb's type and s since; s the spit lasted (render)
+        eg: -1, egT: 0, egHop: 0, gx: 0, gy: 0, snCD: P.delay ?? 3, snN: 0, snMx: P.sn ?? 99, bkN: 0, bonk: 0, spin: 0, bopReq: 0, bopCD: 0, off: 0, belly: '', bsrc: '', bellyT: 0, spWhy: '',
       };
       this.frogs.push(F);
       this.frogSeat(F);
@@ -98,6 +133,32 @@ export const frogMethods = {
     return { x: F.x + F.nx * 0.5 + tx * 0.4, y: F.y + F.ny * 0.5 + ty * 0.4 };
   },
   frogChs(F) { return F.gi >= 0 ? [F.fi, F.fi + 1] : [F.side < 0 ? F.fi : F.fi + 1]; }, // a ring's inner face is channel fi, its outer face channel fi+1
+  // 0.8.18: the mouth when it turns to face (x, y)
+  frogMouthTo(F, x, y) {
+    const f = (x - F.x) * F.ny - (y - F.y) * F.nx >= 0 ? 1 : -1, tx = F.ny * f, ty = -F.nx * f;
+    return { x: F.x + F.nx * 0.5 + tx * 0.4, y: F.y + F.ny * 0.5 + ty * 0.4, face: f };
+  },
+  // the first ring wall, thorn or barrier on the straight line a -> b (null = a clear line). Only the rings' own fixtures
+  // block: eggs, creatures and sensors do not, nor an open shutter or a retracted thorn.
+  frogLine(ax, ay, bx, by) {
+    if (Math.hypot(bx - ax, by - ay) < 1e-3) return null;
+    if (!this.frogRB || this.frogRB.n !== this.rings.length) { this.frogRB = new Set(this.rings.map((r) => r.body)); this.frogRB.n = this.rings.length; }
+    let hit = null;
+    this.world.rayCast(Vec2(ax, ay), Vec2(bx, by), (fx, p, n, fr) => {
+      if (fx.isSensor() || !this.frogRB.has(fx.getBody())) return -1;
+      const u = fx.getUserData() || {};
+      if (u.kind === 'shut' && u.gap && u.gap.o > 0.5) return -1;
+      if (u.kind === 'thorn' && u.thorn && u.thorn.ext < 0.5) return -1;
+      hit = { x: p.x, y: p.y };
+      return fr;
+    });
+    return hit;
+  },
+  // where the held egg sits: in front of the head, low (FROG_CHEEK)
+  frogCheekPt(F) {
+    const tx = F.ny * F.face, ty = -F.nx * F.face;
+    return { x: F.x + F.nx * FROG_CHEEK.u + tx * FROG_CHEEK.f, y: F.y + F.ny * FROG_CHEEK.u + ty * FROG_CHEEK.f };
+  },
 
   // the body follows the planned pose by velocity (so eggs get a proper push); a shape swap rebuilds the fixture
   frogShape(i) {
@@ -137,6 +198,12 @@ export const frogMethods = {
     if (!F || v < 0.8) return;
     F.bump = Math.max(F.bump, clamp(v / 6, 0.15, 1));
     if (F.bumpCD <= 0) { F.bumpCD = 0.35; this.emit('frogBounce', { x: pt.x, y: pt.y, v, id: F.id }); }
+    // 0.8.18 the belly bop: a hard landing on its back (from above, not a roll into its side). Handled in frogStep (no
+    // bodies change inside a contact).
+    if (v >= FROG.bopV && F.bopCD <= 0 && F.ph !== 'hop' && egg.body) {
+      const p = egg.body.getPosition();
+      if ((p.x - F.x) * F.nx + (p.y - F.y) * F.ny > 0.3) { F.bopReq = 1; F.bopCD = FROG.bopCD; }
+    }
   },
 
   // ---------- every step
@@ -144,13 +211,16 @@ export const frogMethods = {
     if (!this.frogs || !this.frogs.length) return;
     const play = this.state === 'play';
     this.frogs.forEach((F, i) => {
-      for (const k of ['lickCD', 'scareCD', 'bumpCD']) if (F[k] > 0) F[k] = Math.max(0, F[k] - dt);
+      for (const k of ['lickCD', 'scareCD', 'bumpCD', 'snCD', 'bopCD', 'off']) if (F[k] > 0) F[k] = Math.max(0, F[k] - dt);
+      if (F.belly) { const b0 = F.bellyT; F.bellyT += dt; if (b0 < 0.95 && F.bellyT >= 0.95) this.emit('frogBurp', { x: F.x, y: F.y, id: F.id, orb: F.belly }); }
+      if (F.eg >= 0) F.egT += dt;
       F.bump = Math.max(0, F.bump - dt * 3);
       if (F.zapT > 0) F.zapT = Math.max(0, F.zapT - dt); else if (F.stn > 0) F.stn = Math.max(0, F.stn - dt); // a zap's flash first, then the dizzy
       if (F.frz > 0) F.frz = Math.max(0, F.frz - dt);
       const x0 = F.x, y0 = F.y;
       F.t += dt;
       this.frogOne(F, dt, play);
+      if (F.eg >= 0) this.frogCarry(F);
       F.vx = (F.x - x0) / dt; F.vy = (F.y - y0) / dt;
       if (!F.solid && F.ph !== 'hop' && !this.frogEggNear(F)) F.solid = 1; // it landed on an egg: solid once the egg moves
       this.frogShape(i);
@@ -164,26 +234,62 @@ export const frogMethods = {
     return false;
   },
 
+  // 0.8.19: the mode table with the frog's dyn row (src/data/dynamism.js: tempo shortens the wait between hops, rest is the
+  // lick cooldown) and the menace director's heat when it is there
+  frogM() {
+    const M = FROG_MODE[this.mode] || FROG_MODE.medium, d = this._dynFrog || (this._dynFrog = dyn('frog', 'medium', this.level.dyn && this.level.dyn.frog));
+    const h = this.menaceHeat ? this.menaceHeat() : 1;
+    return { ...M, every: M.every / (d.tempo * h), lick: (M.lick * d.rest) / (FROG.lickCD * h) };
+  },
   frogOne(F, dt, play) {
-    const M = FROG_MODE[this.mode] || FROG_MODE.medium;
+    const M = this.frogM();
+    if (F.tok && F.ph === 'sit' && F.eg < 0) { F.tok = 0; if (this.menaceDone) this.menaceDone('f' + F.id, 'snatch', false); } // the snatch is over: the director's token back
     if (F.ph === 'hop') { this.frogFly(F); return; }
     this.frogPlace(F);
-    if (!play) return;
+    if (!play) { if (F.eg >= 0) this.frogRelease(F, 'end'); F.bopReq = 0; return; }
+    // 0.8.18: its ring turned briskly (a leaky sum of the degrees it is carried) makes it dizzy: out comes the egg
+    F.spin = F.spin * Math.exp(-dt / FROG.spinTau) + Math.abs(this.rings[F.fi].omega || 0) * dt * (180 / Math.PI);
+    if (F.eg >= 0 && F.spin > M.dizzy && !(F.frz > 0)) { this.frogRelease(F, 'dizzy'); F.stn = F.stnMax = Math.max(F.stn, FROG.spinStun); F.spin = 0; }
+    // the belly bop (frogBump): it coughs up what it holds and looks offended
+    if (F.bopReq) {
+      F.bopReq = 0; F.off = FROG.offT;
+      const had = F.eg >= 0 ? 'egg' : F.belly ? 'orb' : '';
+      if (F.eg >= 0) this.frogRelease(F, 'bop'); else if (F.belly) this.frogCough(F);
+      this.emit('frogBop', { x: F.x, y: F.y, id: F.id, had });
+    }
     if (F.side < 0 ? Math.sin(F.wa) > FROG.hang : Math.sin(F.wa) < -FROG.hang) { this.frogDrop(F); return; } // its wall turned into a ceiling
     if (F.frz > 0 || F.stn > 0) { // frozen or stunned: it does nothing (still a solid body, still a floor in a gap)
-      if (F.ph !== 'sit' && F.ph !== 'land') { F.sc = 0; F.hk = ''; this.frogSet(F, 'sit'); }
+      if (F.eg >= 0) this.frogRelease(F, 'hit'); // a power or the rooster: the egg pops out
+      if (F.ph === 'spit' ? F.t >= F.dur : F.ph !== 'sit' && F.ph !== 'land') { F.sc = 0; F.hk = ''; F.bonk = 0; this.frogSet(F, 'sit'); }
       F.lickCD = Math.max(F.lickCD, 0.8); F.scareCD = Math.max(F.scareCD, 0.5);
       return;
     }
     const idle = F.ph === 'sit' || F.ph === 'land' || F.ph === 'crouch' || F.ph === 'lick';
     if (idle && F.scareCD <= 0) {
       const th = this.frogThreat(F);
-      if (th) { this.frogScare(F, th); return; }
+      if (th) { if (F.eg >= 0) this.frogRelease(F, 'scare'); this.frogScare(F, th); return; }
     }
     switch (F.ph) {
       case 'sit': {
+        if (F.eg >= 0) { // 0.8.18: an egg in its cheeks: one hop inward with it, then it spits it out
+          if (F.egT >= FROG.hold) { this.frogSet(F, 'spit', FROG.spitT); F.spWhy = 'ptoo'; return; }
+          if (!F.egHop) {
+            F.egHop = 1;
+            const plan = this.frogPick(F, false, null, 'up');
+            if (plan) { this.frogPlan(F, plan, false); this.frogSet(F, 'crouch', 0.3); this.emit('frogCrouch', { x: F.x, y: F.y, id: F.id, egg: 1 }); }
+          }
+          return;
+        }
+        if (F.snCD <= 0 && F.snN < Math.min(M.snMax, F.snMx ?? 99)) { const pr = this.frogEggPrey(F, M); if (pr && (this.menaceMay ? this.menaceMay('f' + F.id, 'snatch') : true)) { F.tok = 1; this.frogLick(F, pr, M); return; } }
         if (F.lickCD <= 0) { const pr = this.frogPrey(F, M); if (pr) { this.frogLick(F, pr, M); return; } }
-        if ((F.next -= dt) > 0) return;
+        // 0.8.10: an egg in another channel brings the hop forward (never closer together than FROG.hunt), so the frog
+        // goes after the eggs instead of sitting out its timer
+        if ((F.next -= dt) > 0) {
+          // (aggroB, the menace merge) the wait it drew at its last landing, at that moment's heat (F.full); before the first
+          // hop the nominal one without the heat: the live heat must not stretch or shrink a wait already drawn
+          const full = F.full ?? F.every * M.every * (this.menaceHeat ? this.menaceHeat() : 1), aim = this.frogAim(F);
+          if (!(aim && !aim.idle && aim.ch !== F.fi && full - F.next >= FROG.hunt * M.every)) return;
+        }
         const plan = this.frogPick(F, false, null);
         if (plan) { this.frogPlan(F, plan, false); this.frogSet(F, 'crouch', FROG.hopWarn * M.warn); this.emit('frogCrouch', { x: F.x, y: F.y, id: F.id }); } else F.next = 1.5;
         break;
@@ -191,24 +297,124 @@ export const frogMethods = {
       case 'crouch': if (F.t >= F.dur) this.frogLaunch(F); break;
       case 'land': if (F.t >= FROG.land) { F.sc = 0; this.frogSet(F, 'sit'); } break;
       case 'lick': {
-        if (F.t < F.dur) { const pr = this.frogFind(F, M); if (!pr) { this.emit('frogMiss', { x: F.lx, y: F.ly, id: F.id, early: 1 }); this.frogSet(F, 'sit'); } break; }
+        const egg = F.lk === 'egg';
+        if (F.t < F.dur) {
+          const pr = this.frogFind(F, M);
+          if (!pr) { if (egg) F.snCD = Math.max(F.snCD, 2); this.emit('frogMiss', { x: F.lx, y: F.ly, id: F.id, early: 1 }); this.frogSet(F, 'sit'); }
+          else if (egg) { F.lx = pr.x; F.ly = pr.y; F.face = this.frogMouthTo(F, pr.x, pr.y).face; } // the eyes stay locked on it
+          break;
+        }
         const pr = this.frogFind(F, M);
         if (pr && this.warpStrike('frog', F)) break; // v3.4: a warp gate swallows the frog as the tongue shoots
-        F.hit = pr ? 1 : 0; F.got = 0;
+        F.hit = pr ? 1 : 0; F.got = 0; F.bonk = 0;
         if (pr) { F.lx = pr.x; F.ly = pr.y; }
-        this.frogSet(F, 'tongue', FROG.tongueT);
-        this.emit('frogTongue', { x: F.x, y: F.y, tx: F.lx, ty: F.ly, id: F.id, hit: F.hit });
+        if (pr && egg) { // 0.8.18: a wall turned between them: the tongue slaps it
+          const m = this.frogMouth(F), w = this.frogLine(m.x, m.y, pr.x, pr.y);
+          if (w) { F.hit = 0; F.bonk = 1; F.lx = w.x; F.ly = w.y; }
+        }
+        this.frogSet(F, 'tongue', egg ? FROG.snTongue : FROG.tongueT);
+        this.emit('frogTongue', { x: F.x, y: F.y, tx: F.lx, ty: F.ly, id: F.id, hit: F.hit, kind: F.lk, bonk: F.bonk });
         break;
       }
       case 'tongue': {
-        if (F.hit && !F.got && F.t >= FROG.tongueT * FROG.grab) this.frogGrab(F, M);
-        if (F.t >= FROG.tongueT) {
-          if (F.got) { this.frogSet(F, 'gulp', FROG.gulpT); this.emit('frogGulp', { x: F.x, y: F.y, id: F.id }); } else { this.emit('frogMiss', { x: F.lx, y: F.ly, id: F.id }); this.frogSet(F, 'sit'); }
+        const T = F.dur || FROG.tongueT;
+        if (F.hit && !F.got && F.t >= T * FROG.grab) this.frogGrab(F, M);
+        if (F.bonk === 1 && F.t >= T * FROG.grab) { F.bonk = 2; F.bkN++; this.emit('frogBonk', { x: F.lx, y: F.ly, id: F.id }); }
+        if (F.t >= T) {
+          if (F.bonk) { // it snaps back into its face: dizzy, a free window
+            F.bonk = 0; F.snCD = Math.max(F.snCD, FROG.bonkStun + 2); F.next = Math.max(F.next, 1.5);
+            F.stn = F.stnMax = Math.max(F.stn, FROG.bonkStun);
+            this.frogSet(F, 'sit');
+          } else if (F.got && F.pk === 'egg') this.frogSet(F, 'stuff', FROG.stuffT);
+          else if (F.got) { this.frogSet(F, 'gulp', FROG.gulpT); this.emit('frogGulp', { x: F.x, y: F.y, id: F.id }); }
+          else { if (F.lk === 'egg') F.snCD = Math.max(F.snCD, 2.5); this.emit('frogMiss', { x: F.lx, y: F.ly, id: F.id }); this.frogSet(F, 'sit'); }
         }
         break;
       }
       case 'gulp': if (F.t >= F.dur) this.frogSet(F, 'sit'); break;
+      case 'stuff': if (F.t >= F.dur) this.frogSet(F, 'sit'); break;
+      case 'spit': {
+        if (F.eg >= 0 && F.t >= F.dur * FROG.spitAt) this.frogRelease(F, F.spWhy || 'ptoo', true);
+        if (F.t >= F.dur) this.frogSet(F, 'sit');
+        break;
+      }
     }
+  },
+
+  // ---------- 0.8.18 the snatch
+  // an egg it can take: loose, in play, a plain shell (a stone, burning, frozen, bubbled, held or tied egg is not)
+  frogEggOk(e) {
+    return e.alive && !e.saved && !!e.body && e.body.isActive() && !e.chick && !e.phx && !e.hc && !e.thf && !e.octo && !e.clamp && !e.hold && !e.joint && !e.sbub && !e.bubbleFix
+      && !(e.stone > 0) && !(e.fire > 0) && !(e.honey > 0) && !(e.icy > 0) && !(e.bubble > 0);
+  },
+  // the nearest such egg within reach of its mouth, in its channel or the one next to it, with a clear line
+  frogEggPrey(F, M) {
+    if (this.p2Lure && this.p2Lure()) return null; // a decoy is out: it has eyes for nothing else
+    if (this.timeLimit && this.timeLeft < FROG.snTail + M.snWarn) return null; // never in the last seconds
+    if (this.frogs.some((O) => O !== F && O.eg >= 0)) return null; // one egg in a mouth at a time, in the whole vault
+    const chs = this.frogChs(F), lo = Math.min(...chs) - 1, hi = Math.max(...chs) + 1, n = this.rings.length;
+    let best = null, bd = M.snReach;
+    for (const e of this.aliveEggs()) {
+      if (!this.frogEggOk(e)) continue;
+      const c = this.channelOf(e);
+      if (c < lo || c > hi || c >= n) continue;
+      const p = e.body.getPosition(), m = this.frogMouthTo(F, p.x, p.y), d = Math.hypot(p.x - m.x, p.y - m.y);
+      if (d >= bd || this.frogLine(m.x, m.y, p.x, p.y)) continue;
+      bd = d; best = { k: 'egg', x: p.x, y: p.y, id: e.id, ty: e.kind || '' };
+    }
+    return best;
+  },
+  // the held egg rides in its cheeks (reeled in along the tongue first)
+  frogCarry(F) {
+    const e = this.eggs.find((q) => q.id === F.eg);
+    if (!e || !e.alive || !e.body) { F.eg = -1; return; }
+    const c = this.frogCheekPt(F);
+    let x = c.x, y = c.y;
+    if (F.ph === 'tongue') { const T = F.dur || FROG.snTongue, u = sstep((F.t - T * FROG.grab) / (T * (1 - FROG.grab))); x = F.gx + (c.x - F.gx) * u; y = F.gy + (c.y - F.gy) * u; }
+    e.body.setTransform(Vec2(x, y), e.body.getAngle());
+  },
+  // "ptoo": the egg comes out in front of it (behind, if a wall is right there), unhurt, rolling gently away
+  frogSpitSpot(F) {
+    const ring = this.rings[F.fi], rb = ring.r + F.side * RING_TH / 2, h = 0.34, m = this.frogMouth(F);
+    let out = null;
+    for (const f of [F.face, -F.face]) {
+      const a = F.wa - F.side * f * (0.72 / rb), r = rb + F.side * h, x = r * Math.cos(a), y = r * Math.sin(a);
+      const nx = F.side * Math.cos(a), ny = F.side * Math.sin(a), tx = ny * f, ty = -nx * f;
+      out = { x, y, vx: tx * 1.4 + nx * 0.5, vy: ty * 1.4 + ny * 0.5 };
+      if (!this.frogLine(m.x, m.y, x, y)) break;
+    }
+    return out;
+  },
+  frogRelease(F, why, inPhase = false) {
+    const M = this.frogM(), e = this.eggs.find((q) => q.id === F.eg);
+    F.eg = -1; F.egT = 0; F.egHop = 0; F.spWhy = why;
+    F.snCD = Math.max(F.snCD, M.snCD); F.lickCD = Math.max(F.lickCD, 1.5);
+    let at = null;
+    if (e && e.alive && e.body) {
+      at = this.frogSpitSpot(F);
+      e.body.setTransform(Vec2(at.x, at.y), e.body.getAngle());
+      e.hc = 0;
+      e.body.setActive(true);
+      e.body.setLinearVelocity(Vec2(at.vx, at.vy));
+      e.body.setAngularVelocity(0);
+      e.body.setAwake(true);
+      e.safeT = Math.max(e.safeT || 0, 0.8); e.freefall = 0; e.drop = 0; e.ch = this.channelOf(e);
+    }
+    if (!inPhase && this.state === 'play') { this.frogSet(F, 'spit', FROG.spitT); F.t = FROG.spitT * FROG.spitAt; }
+    this.emit('frogSpit', { x: at ? at.x : F.x, y: at ? at.y : F.y, id: F.id, why, egg: e ? e.id : 0 });
+  },
+  // a bop: the swallowed orb pops back out of its mouth as a normal orb
+  frogCough(F) {
+    const type = F.belly, m = this.frogMouth(F), d = Math.hypot(m.x, m.y), n = this.rings.length;
+    F.belly = ''; F.bellyT = 0; F.lickCD = Math.max(F.lickCD, 5);
+    this.addOrb(type, clamp(this.chAt(d), 0, n - 1), Math.atan2(m.y, m.x), F.bsrc || 'frog', d); // a level's own orb comes back as one (it still counts for "collect every orb")
+    this.emit('frogCough', { x: m.x, y: m.y, id: F.id, orb: type });
+  },
+  // the planner's measure (src/sim/search.js value): 1 = in its cheeks, 0.6 = locked on with a clear line
+  frogThreatOf(e) {
+    if (e.hc === 4) return 1;
+    for (const F of this.frogs || []) if (F.ph === 'lick' && F.lk === 'egg' && F.lid === e.id) return 0.6;
+    return 0;
   },
 
   // ---------- licking
@@ -217,7 +423,7 @@ export const frogMethods = {
     const m = this.frogMouth(F), chs = this.frogChs(F), R = M.tongue;
     let best = null, bd = R;
     for (const o of this.orbs) {
-      if (!o.alive || !chs.includes(o.ch)) continue;
+      if (F.belly || !o.alive || !chs.includes(o.ch)) continue; // 0.8.18: one orb in its belly at a time (a bop gives it back)
       const d = Math.hypot(o.x - m.x, o.y - m.y);
       if (d < bd) { bd = d; best = { k: 'orb', x: o.x, y: o.y, id: 0, ty: o.type }; }
     }
@@ -233,6 +439,9 @@ export const frogMethods = {
     const m = this.frogMouth(F), chs = this.frogChs(F), R = M.tongue * 1.15;
     if (F.lk === 'orb') {
       for (const o of this.orbs) if (o.alive && o.type === F.lty && chs.includes(o.ch) && Math.hypot(o.x - F.lx, o.y - F.ly) < 0.5 && Math.hypot(o.x - m.x, o.y - m.y) < R) return { k: 'orb', x: o.x, y: o.y, o };
+    } else if (F.lk === 'egg') { // 0.8.18: the egg it locked on, still in reach (the line is judged when the tongue shoots)
+      const e = this.eggs.find((q) => q.id === F.lid);
+      if (e && this.frogEggOk(e)) { const p = e.body.getPosition(), q = this.frogMouthTo(F, p.x, p.y); if (Math.hypot(p.x - q.x, p.y - q.y) < M.snReach * 1.15) return { k: 'egg', x: p.x, y: p.y, e }; }
     } else {
       const e = this.eggs.find((q) => q.id === F.lid);
       if (e && e.alive && !e.saved && e.chick && e.body) { const p = e.body.getPosition(); if (chs.includes(this.channelOf(e)) && Math.hypot(p.x - m.x, p.y - m.y) < R) return { k: 'chick', x: p.x, y: p.y, e }; }
@@ -244,6 +453,13 @@ export const frogMethods = {
     const tx = F.ny, ty = -F.nx;
     F.face = (pr.x - F.x) * tx + (pr.y - F.y) * ty >= 0 ? 1 : -1;
     F.lickCD = FROG.lickCD * M.lick;
+    if (pr.k === 'egg') { // 0.8.18: the lock-on. ring = the ring a turn of which answers it: the wall between them, or its own floor
+      const n = this.rings.length, e = this.eggs.find((q) => q.id === pr.id), ec = e ? this.channelOf(e) : F.fi, mo = this.frogMouth(F);
+      const fc = clamp(this.chAt(Math.hypot(mo.x, mo.y)), 0, n - 1), ring = clamp(ec < fc ? ec : ec > fc ? fc : F.fi, 0, n - 1);
+      this.frogSet(F, 'lick', M.snWarn);
+      this.emit('frogLick', { x: (mo.x + pr.x) / 2, y: (mo.y + pr.y) / 2, fx: F.x, fy: F.y, tx: pr.x, ty: pr.y, id: F.id, kind: 'egg', egg: pr.id, ring }); // x, y: the middle of the tongue's line (the lesson's spot)
+      return;
+    }
     this.frogSet(F, 'lick', FROG.lickWarn * M.warn);
     this.emit('frogLick', { x: F.x, y: F.y, tx: pr.x, ty: pr.y, id: F.id, kind: pr.k });
   },
@@ -251,9 +467,24 @@ export const frogMethods = {
     const pr = this.frogFind(F, M);
     F.got = 1;
     if (!pr) { F.hit = 0; F.got = 0; return; }
+    if (pr.k === 'egg') { // 0.8.18: a wall turned in since the shot: it slaps that instead
+      const m = this.frogMouth(F), w = this.frogLine(m.x, m.y, pr.x, pr.y);
+      if (w) { F.hit = 0; F.got = 0; F.bonk = 2; F.bkN++; F.lx = w.x; F.ly = w.y; this.emit('frogBonk', { x: w.x, y: w.y, id: F.id }); return; }
+    }
     F.pk = pr.k; F.px = pr.x; F.py = pr.y;
+    if (pr.k === 'egg') { // into its cheeks: switched off (nothing can crack it there), carried by frogCarry, never eaten
+      const e = pr.e;
+      e.hold = null; e.honey = 0; e.hc = 4;
+      e.body.setLinearVelocity(Vec2(0, 0)); e.body.setAngularVelocity(0);
+      e.body.setActive(false);
+      F.eg = e.id; F.egT = 0; F.egHop = 0; F.gx = pr.x; F.gy = pr.y; F.snN++; F.pty = e.kind || 'egg';
+      F.snCD = Math.max(F.snCD, M.snCD);
+      this.emit('frogSnatch', { x: pr.x, y: pr.y, id: F.id, egg: e.id });
+      return;
+    }
     if (pr.k === 'orb') {
       F.pty = pr.o.type;
+      F.belly = pr.o.type; F.bsrc = pr.o.src || ''; F.bellyT = 0; // 0.8.18: it glows in its belly, and a bop brings it back
       pr.o.alive = false;
       this.kill.push(pr.o.body);
     } else {
@@ -263,7 +494,7 @@ export const frogMethods = {
       e.alive = false; e.fled = 1; // out of play like a caught chick, never a broken egg
       this.kill.push(e.body);
     }
-    this.emit('frogEat', { x: pr.x, y: pr.y, id: F.id, kind: pr.k, type: F.pty });
+    this.emit('frogEat', { x: pr.x, y: pr.y, id: F.id, kind: pr.k, prey: F.pty }); // (0.8.18: was 'type', which overwrote the event's own type: the gulp never showed)
   },
 
   // ---------- fright: a flame on an egg, or a dash chick, close by
@@ -293,12 +524,40 @@ export const frogMethods = {
   // ---------- hopping
   // candidate hops: through a gap of the floor ring (down, into the next channel out) or of the ring above (up);
   // `step` hops along the floor toward a gap when none is in reach. scared: away from the threat, and further.
-  frogPick(F, scared, th) {
+  // 0.8.10 (mykee: "the frog tends to move upward only, it doesn't have a brain of its own"): where the frog wants to
+  // be. The eggs run from the middle outward to the basket, so the frog goes for the egg that is closest to getting
+  // home: its channel, and its angle. Returns null when no egg is loose (then it hops as it likes, as before).
+  // 0.8.18 the decoy: a decoy (the power) anywhere in the vault, or a hatched chick near it, is what it hunts instead
+  frogAim(F) {
+    const D = this.p2Lure && this.p2Lure();
+    if (D && D.body) { const p = D.body.getPosition(); return { x: p.x, y: p.y, ch: this.chAt(Math.hypot(p.x, p.y)), w: Math.atan2(p.y, p.x), lure: 1 }; }
+    if (F) {
+      let bd = FROG.decoyR, c = null;
+      for (const e of this.aliveEggs()) {
+        if (!e.chick || e.chickKind === 'dash' || !e.body) continue;
+        const p = e.body.getPosition(), d = Math.hypot(p.x - F.x, p.y - F.y);
+        if (d < bd) { bd = d; c = p; }
+      }
+      if (c) return { x: c.x, y: c.y, ch: this.chAt(Math.hypot(c.x, c.y)), w: Math.atan2(c.y, c.x), lure: 1 };
+    }
+    let best = null, bs = -1e9;
+    for (const e of this.aliveEggs()) {
+      const p = e.body.getPosition(), ch = this.channelOf(e);
+      const sc = ch * 10 - Math.abs(wrap(Math.atan2(p.y, p.x) + Math.PI / 2)) ; // further out, and nearer the bottom, matters more
+      if (sc > bs) { bs = sc; best = { x: p.x, y: p.y, ch, w: Math.atan2(p.y, p.x) }; }
+    }
+    // no egg loose (they are all home or gone): it waits where the eggs will come through, the lower outer channels,
+    // instead of drifting into the middle of the vault
+    if (!best) { const ch = Math.max(0, this.rings.length - 2); best = { x: 0, y: -1, ch, w: -Math.PI / 2, idle: 1 }; }
+    return best;
+  },
+  frogPick(F, scared, th, only = '') { // only: 'up' = inward hops alone (0.8.18: off with an egg in its cheeks)
     if (F.side > 0) return null; // hops start from a floor in the lower half
     const n = this.rings.length, wf = F.wa, reach = scared ? FROG.scareReach : FROG.reach;
     const away = (w) => (th ? Math.abs(wrap(w - Math.atan2(th.y, th.x))) : 0);
+    const aim = scared || only ? null : this.frogAim(F);
     const C = [];
-    for (const hk of ['down', 'up']) {
+    for (const hk of only ? [only] : ['down', 'up']) {
       const ri = hk === 'down' ? F.fi : F.fi - 1, ti = hk === 'down' ? F.fi + 1 : F.fi - 1;
       if (ri < 0 || ti < 0 || ti > n - 1) continue;
       const ring = this.rings[ri];
@@ -308,7 +567,18 @@ export const frogMethods = {
         if (Math.sin(wg) > FROG.low || Math.abs(wrap(wg - wf)) * ring.r > reach) return;
         for (const side of [1, -1]) {
           const land = this.frogLandAt(F, hk, ri, ti, g, wg, side);
-          if (land) C.push({ hk, hr: ri, hg: k, ti, ...land, w: scared ? 0.2 + away(wg + side * 0.1) : 1 });
+          if (!land) continue;
+          let w = 1;
+          if (aim) {
+            // the channel it would land in, against the egg's: on it is best, one step toward it is good, away is poor
+            const d0 = Math.abs(F.fi + (F.fi >= aim.ch ? 0 : 1) - aim.ch), d1 = Math.abs(ti - aim.ch);
+            w = d1 === 0 ? 6 : d1 < d0 ? 3 : d1 === d0 ? 1 : 0.25;
+            // and how near the egg it lands, going round (a frog beside the egg can plug the gap under it)
+            const wl = this.rings[land.tpl >= 0 ? ti : ti].body.getAngle() + land.tla;
+            w *= 1 + 2.2 * Math.max(0, 1 - Math.abs(wrap(wl - aim.w)) / 1.2);
+            if (land.tpl >= 0 && d1 === 0) w *= 1.8; // landing IN a gap of the egg's channel: its signature move
+          }
+          C.push({ hk, hr: ri, hg: k, ti, ...land, w: scared ? 0.2 + away(wg + side * 0.1) : w });
         }
       });
     }
@@ -319,7 +589,7 @@ export const frogMethods = {
       for (const c of C) if ((r -= c.w) <= 0) return c;
       return C[C.length - 1];
     }
-    return this.frogStepPlan(F, scared, th);
+    return only ? null : this.frogStepPlan(F, scared, th);
   },
   // where it lands for a hop through gap g (world angle wg), on `side`; null when that spot is bad
   frogLandAt(F, hk, ri, ti, g, wg, side) {
@@ -346,15 +616,23 @@ export const frogMethods = {
     let tw = null;
     if (scared && th) tw = wf + (wrap(wf - Math.atan2(th.y, th.x)) >= 0 ? 1 : -1) * (2.0 / this.rings[F.fi].r);
     else {
+      // 0.8.10: toward the gap that leads to the egg it is after; without a loose egg, the nearest usable gap, as before
+      const aim = this.frogAim(F);
       let bd = 1e9;
       for (const ri of [F.fi, F.fi - 1]) {
         if (ri < 0 || (ri === F.fi && F.fi > n - 2)) continue; // ring F.fi leads down only if there is a channel below it
+        const ti = ri === F.fi ? F.fi + 1 : F.fi - 1;
         const ring = this.rings[ri];
         for (const g of ring.gaps) {
           const wg = ring.body.getAngle() + g.a, d = wrap(wg - wf);
-          if (this.frogGapOk(g) && Math.sin(wg) <= FROG.low && Math.abs(d) * ring.r < bd) { bd = Math.abs(d) * ring.r; tw = wf + clamp(d, -1.4 / ring.r, 1.4 / ring.r); }
+          if (!this.frogGapOk(g) || Math.sin(wg) > FROG.low) continue;
+          // the cost: how far round the gap is, plus a penalty for a gap that leads away from the egg
+          const cost = Math.abs(d) * ring.r + (aim ? 3 * Math.max(0, Math.abs(ti - aim.ch) - Math.abs(F.fi - aim.ch)) : 0);
+          if (cost < bd) { bd = cost; tw = wf + clamp(d, -1.4 / ring.r, 1.4 / ring.r); }
         }
       }
+      // no gap at all to walk to: shuffle round toward the egg anyway, so it never looks stuck
+      if (tw === null && aim) { const d = wrap(aim.w - wf); if (Math.abs(d) * this.rings[F.fi].r > 0.6) tw = wf + clamp(d, -1.4 / this.rings[F.fi].r, 1.4 / this.rings[F.fi].r); }
     }
     if (tw === null || Math.abs(wrap(tw - wf)) * this.rings[F.fi].r < 0.3) return null;
     const T = this.rings[F.fi], land = this.frogLandSpot(F, T, F.fi, tw);
@@ -445,7 +723,8 @@ export const frogMethods = {
     F.air = 0; F.u = 0; F.hk = '';
     this.frogPlace(F);
     F.solid = this.frogEggNear(F) ? 0 : 1;
-    F.next = F.every * (0.85 + 0.3 * this.rand()) * (FROG_MODE[this.mode] || FROG_MODE.medium).every;
+    F.full = F.every * this.frogM().every; // (aggroB) the nominal wait at this heat: the hunt rule measures from it
+    F.next = F.full * (0.85 + 0.3 * this.rand());
     this.frogSet(F, 'land', FROG.land);
     this.emit('frogLand', { x: F.x, y: F.y, id: F.id, plug: F.gi >= 0 ? 1 : 0, scared: F.sc });
   },
@@ -475,6 +754,8 @@ export const frogMethods = {
       if (F.ph === 'hop') this.frogFly(F); else this.frogPlace(F);
       this.frogShape(i);
       this.frogTeleport(i);
+      const e = F.eg >= 0 ? this.eggs.find((q) => q.id === F.eg) : null; // 0.8.18: the egg in its cheeks stays switched off
+      if (e && e.body) e.body.setActive(false);
     });
   },
 };

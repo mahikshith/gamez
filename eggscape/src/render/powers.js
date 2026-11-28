@@ -1097,7 +1097,7 @@ export function drawOrb(ctx, id, cx, cy, r, t = 0, known = true) {
 /* -------------------------------------------------------- egg overlays */
 
 // Fire hugging the shell (egg-local units: h = 100): a wavy rim of flame plus tongues on top.
-function eggFlames(ctx, pal, t, edge) {
+function eggFlames(ctx, pal, t, edge, o = {}) {
   for (let layer = 0; layer < 2; layer++) {
     const base = layer ? 1.03 : 1.1, amp = layer ? 0.035 : 0.06, lift = layer ? 6 : 12;
     ctx.beginPath();
@@ -1112,7 +1112,7 @@ function eggFlames(ctx, pal, t, edge) {
       else ctx.moveTo(x, y);
     }
     ctx.closePath();
-    eggPath(ctx, 100, 0, 0, false); // hole: keeps the face readable
+    if (!o.solid) eggPath(ctx, 100, 0, 0, false); // hole: keeps the face readable (the streak's flame has no face: it is solid)
     ctx.fillStyle = pal[layer];
     ctx.fill('evenodd');
     if (!layer && edge) {
@@ -1121,7 +1121,7 @@ function eggFlames(ctx, pal, t, edge) {
       ctx.stroke();
     }
   }
-  const n = 5;
+  const n = o.n || 5, tall = o.tall || 1;
   for (let layer = 0; layer < 4; layer++) {
     const sc = [1, 0.74, 0.5, 0.27][layer];
     ctx.fillStyle = pal[layer];
@@ -1132,7 +1132,7 @@ function eggFlames(ctx, pal, t, edge) {
       const [px, py] = eggPoint(a, 100);
       const up = -Math.sin(a);
       const w = 12 + up * 6;
-      const h = 22 + up * 22 + hash(i) * 6;
+      const h = (22 + up * 22 + hash(i) * 6) * tall;
       flamePath(ctx, px * 0.96, py * 0.96 + 4, w * sc, h * (layer ? sc * 1.1 : 1), t, i * 1.9 + layer);
     }
     ctx.fill();
@@ -1163,6 +1163,26 @@ export function drawEggPower(ctx, id, t, h) {
     else if (EGG_ART[id]) EGG_ART[id](ctx, t);
   } catch (e) {
     // art must never break the frame
+  }
+  ctx.restore();
+}
+
+// The streak's flame (ui/flame.js): the fire egg's own flame (same rim, tongues, colours and motion), solid instead of
+// ringed round a face, and hotter with heat 0..1. Drawn at the egg's centre in the egg's 100-unit space, y down.
+export function drawFireBody(ctx, t, heat = 0, calm = false) {
+  const pal = FLAME.fire_red, hot = heat > 0.5 ? pal[3] : pal[2];
+  ctx.save();
+  ctx.lineJoin = 'round';
+  eggFlames(ctx, pal, t, null, { solid: true, n: heat > 0.65 ? 7 : 5, tall: 1.05 + 0.5 * heat });
+  ctx.fillStyle = pal[2]; eggPath(ctx, 56 + 6 * heat, 0, 14); ctx.fill();
+  ctx.fillStyle = hot; eggPath(ctx, 30 + 12 * heat, 0, 22); ctx.fill();
+  if (!calm) { // sparks climbing off it, as off the fire egg
+    ctx.fillStyle = '#ffd36a';
+    const ns = 4 + Math.round(5 * heat);
+    for (let i = 0; i < ns; i++) {
+      const k = mod(t * 0.8 + i / ns, 1), x = (hash(i * 5.3) - 0.5) * 70 + Math.sin(t * 4 + i) * 6, y = -40 - k * 70;
+      ctx.globalAlpha = Math.sin(k * Math.PI); ctx.beginPath(); ctx.arc(x, y, 2.6 * (1 - k * 0.5), 0, TAU); ctx.fill();
+    }
   }
   ctx.restore();
 }
