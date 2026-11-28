@@ -56,12 +56,20 @@ export const BAND = {
   hp: 3,
   // 0.8.19: every wait, warning and speed below that is his TEMPER is a Medium number scaled by data/dynamism.js (DYN.raccoon
   // x DYN_MODE: bandRest / bandTell / bandFast / bandQuick); the m3 tables left are his body and the player's counter
-  sneak: 0.55, // m/s tiptoeing along the yard (x tempo)
+  sneak: 0.95, // m/s along the yard (x tempo; 0.8.19 feel: he trots straight for the vault, seen heading for the eggs at once)
   crouch: 1.2, // s he looks up and crouches before the leap (the telegraph; x tell)
   climb: 1.7, // s the leap and the haul over the rim (/ tempo)
   perchA: 32, // deg from the bottom of a ring's floor he sits at (his side)
   lowA: 13, // deg 0.8.19: his POUNCE perch, low by the eggs at the bottom (his second way to an egg: see bandChase)
   minR: 2.5, // m: he perches only on rings this big (never the nest ring)
+  // 0.8.19 feel (the owner: "the raccoon takes far too long to snatch an egg"): THE PRY. Every egg lies inside rings he
+  // may not sit on (an idle player's eggs in the hub): he hops in to the floor just outside them (a ring of at least
+  // pryR m) and cranks the ring that HOLDS them with both paws (pry deg/s x tempo, the short way to bring its nearest gap
+  // to the bottom) so they drop out onto his floor. The counter is the same gesture: turn that ring against him.
+  pryR: 1.9, pry: m3(36, 44, 50), pryT: 12,
+  pryDry: 1.6, // s a crank bout for nothing is this short when every egg is out of his reach (the pry is next)
+  pryCalm: 3, // s after a pry the eggs he tipped out tumble by him (no bump)
+  pryAfter: m3(15, 12, 9), // s after he bags an egg before he pries again (pacing: an idle player is not stripped bare at once)
   sit: 2.1, // s sitting after a grab or a shake before the next crank (x rest)
   tease: 1.9, // s sitting with nothing to take before he cranks again (there is always a ring to shake; x rest)
   spit: 1.3, // s spitting in his paws (the telegraph; x tell)
@@ -115,7 +123,7 @@ export const banditMethods = {
       ph: 'idle', t: R.delay ?? 3, dur: 1, x: g.x0 - 0.7, face: 1, goal: g.x0, odo: 0, ri: -1, pa: 0, side: -1, dir: -1, n: 0, from: null,
       fl: 0, cr: 0, ct: 0, tgt: 0, eid: 0, px: 0, py: 0, sack: [], hits: 0, hp, hurt: 0, whistled: 0, wz: 0, wid: -1,
       fz: 0, hitCD: 0, why: '', spill: [], done: 0, end: '', held: 0, t0: 0, sx: null, sy: null, duel: null, dueled: 0, dw: 0, rip: 0,
-      see: 0, go: null, dry: 0, miss: 0, push: 0, low: 0, // 0.8.19: the notice clock, the pursuit's goal { ri, side, low }, crank
+      see: 0, go: null, dry: 0, miss: 0, push: 0, low: 0, pry: 0, // 0.8.19: the notice clock, the pursuit's goal { ri, side, low }, crank
       // bouts with no egg on his floor (dry) / with eggs that never came (miss), the player fought his ring (push), the pounce perch
     };
   },
@@ -162,7 +170,7 @@ export const banditMethods = {
     return (-90 + s * A) * D2R;
   },
   // (0.8.19 low: his pounce perch, BAND.lowA from the bottom, right by the eggs resting there)
-  bandSit(B, ri, s, low = 0) { B.ri = ri; B.side = s; B.dir = s; B.low = low ? 1 : 0; B.pa = this.bandPerchA(ri, s, low ? BAND.lowA : BAND.perchA); B.face = -s; B.fl = 0; B.n++; B.push = 0; },
+  bandSit(B, ri, s, low = 0, pry = 0) { B.ri = ri; B.side = s; B.dir = s; B.low = low ? 1 : 0; B.pry = pry ? 1 : 0; B.pa = this.bandPerchA(ri, s, low ? BAND.lowA : BAND.perchA); B.face = -s; B.fl = 0; B.n++; B.push = 0; },
   // ---------- the eggs he can take: on his floor, in reach, not burning (a burning one hurts him), not a chick
   bandFit(e) { return this.reefFit(e) && !(e.fire > 0) && this.channelOf(e) === this.band.ri; },
   bandInReach(B, e, k = 1) { const P = this.bandReachPt(B), p = e.body.getPosition(); return Math.hypot(p.x - P.x, p.y - P.y) <= this.bandM(BAND.reachR) * k; },
@@ -177,12 +185,22 @@ export const banditMethods = {
     return best;
   },
   bandHasEggs(B) { return this.aliveEggs().some((e) => this.reefFit(e) && this.channelOf(e) === B.ri); },
+  // 0.8.19 the ring he turns: his own floor, or (the pry) the ring just inside it that holds the eggs
+  bandCri(B) { return B.pry ? B.ri - 1 : B.ri; },
+  bandPryEggs(B) { return this.aliveEggs().some((e) => this.reefFit(e) && !e.hc && this.channelOf(e) === B.ri - 1); },
+  // the way to turn the pried ring so its nearest open gap comes to the bottom (+1 counter-clockwise)
+  bandPryDir(B) {
+    const ring = this.rings[B.ri - 1], ra = ring.body.getAngle();
+    let best = null;
+    for (const g of ring.gaps) { if (!(g.o >= 0.5)) continue; const d = wrap(-Math.PI / 2 - (ra + g.a)); if (!best || Math.abs(d) < Math.abs(best)) best = d; }
+    return best == null || Math.abs(best) < 1e-6 ? B.side : best > 0 ? 1 : -1;
+  },
 
   // ---------- every sim step, before the world steps (sim.js step): his crank and the counter
   bandRings(dt) {
     const B = this.band;
     if (!B || this.state !== 'play' || !this.bandPerched(B) || B.done) return;
-    const ring = this.rings[B.ri];
+    const ring = this.rings[this.bandCri(B)];
     if (!ring) return;
     const free = !(ring.motor || ring.gear || ring.stun > 0 || ring.lock > 0);
     // the counter: how far the ring has been turned against his crank lately (the player, a power: anything but him)
@@ -190,12 +208,12 @@ export const banditMethods = {
     B.fl = Math.max(0, B.fl * k - B.dir * own);
     // 0.8.19 the player's last move: his ring turned against him (not yet a shake): he takes note and changes plan at his
     // next sit (bandChase: the pounce, or another ring)
-    const tr = this.menaceTurned(B.ri, 0.25); // the menace engine saw the player turn his ring his way-against
+    const tr = this.menaceTurned(this.bandCri(B), 0.25); // the menace engine saw the player turn his ring his way-against
     if (!B.push && tr && tr.dir === -B.dir && (B.ph === 'sit' || B.ph === 'spit' || B.ph === 'crank')) { B.push = 1; this.emit('bandBrace', { ...this.bandHead(B), ring: B.ri }); }
     if (!B.push && B.fl > BAND.brace * this.bandM(BAND.shake) * D2R && (B.ph === 'sit' || B.ph === 'spit' || B.ph === 'crank')) { B.push = 1; this.emit('bandBrace', { ...this.bandHead(B), ring: B.ri }); }
     if (B.fl > this.bandM(BAND.shake) * D2R && B.ph !== 'shaken' && B.ph !== 'duel' && B.hitCD <= 0) { B.fl = 0; this.bandShake(B); return; }
     if (B.ph !== 'crank' || !free || B.held || B.fz > 0) return;
-    const w = B.dir * this.bandCrankW() * D2R * ss(0, BAND.crankIn, B.dur - B.t);
+    const w = B.dir * (B.pry ? this.bandFast(this.bandM(BAND.pry)) : this.bandCrankW()) * D2R * ss(0, BAND.crankIn, B.dur - B.t);
     ring.omega += w; ring.target += w * dt; // a turn of his own: the target goes with it (no tug of war with a held ring)
     B.cr += Math.abs(w) * dt * this.bandFloor(B.ri); // m of floor cranked (the art's hand-over-hand is tied to it)
   },
@@ -206,6 +224,7 @@ export const banditMethods = {
     if (!B) return;
     const end = this.state !== 'play', X = this.bx && this.bx.boss;
     if (B.hitCD > 0) B.hitCD -= dt;
+    if (B.pk > 0) B.pk -= dt;
     if (this.menaceHolds('band') && B.ph !== 'reach' && B.ph !== 'grab' && B.ph !== 'strain') this.menaceDone('band', 'reach', B.sack.length > (B.sk0 || 0)); // the move is over
     if (B.ph !== 'grab') B.sk0 = B.sack.length;
     this.bandSpillStep(B, dt);
@@ -280,18 +299,19 @@ export const banditMethods = {
         if (B.duel) break; // the weasel is coming for its share (bandMeet moves him)
         const go = this.bandChase(B); // the eggs are kept from him: he goes after them (a telegraph, then a hop)
         if (go) { this.bandEye(B, go); break; }
-        this.bandSet(B, 'spit', this.bandTell(BAND.spit)); this.emit('bandSpit', { ...this.bandHead(B), ring: B.ri, dir: B.dir });
+        if (B.pry) { if (!this.bandPryEggs(B)) { B.pry = 0; B.push = 1; } else B.dir = this.bandPryDir(B); } // the pry: the short way round
+        this.bandSet(B, 'spit', this.bandTell(BAND.spit)); this.emit('bandSpit', { ...this.bandHead(B), ring: this.bandCri(B), dir: B.dir });
         break;
       }
       case 'spit':
         if (this.bandNotice(B, dt) && this.bandReach(B)) break;
-        if ((B.t -= dt) <= 0) { this.bandSet(B, 'crank', this.bandM(BAND.crankT)); this.emit('bandCrank', { ...this.bandHead(B), ring: B.ri, dir: B.dir }); }
+        if ((B.t -= dt) <= 0) { this.bandSet(B, 'crank', B.pry ? BAND.pryT : this.bandM(BAND.crankT)); this.emit('bandCrank', { ...this.bandHead(B), ring: this.bandCri(B), dir: B.dir }); }
         break;
       case 'eye': // 0.8.19 the pursuit's telegraph: up on his toes, leaning, eyes locked on where he is going; then the hop
         if ((B.t -= dt) <= 0) {
           const G = B.go; B.go = null;
           if (!G) { this.bandSet(B, 'sit', this.bandRest(BAND.tease)); break; }
-          B.from = { ri: B.ri, pa: B.pa, face: B.face }; this.bandSit(B, G.ri, G.side, G.low);
+          B.from = { ri: B.ri, pa: B.pa, face: B.face }; this.bandSit(B, G.ri, G.side, G.low, G.pry);
           this.bandSet(B, 'hop', this.bandQuick(BAND.hop)); this.emit('bandHop', { ...this.bandPerchPt(B), ring: B.ri, chase: 1 });
         }
         break;
@@ -299,10 +319,15 @@ export const banditMethods = {
         if (this.bandPick(B) && this.bandReach(B)) break; // cranking he is already reaching out: no notice
         // 0.8.19 a bout on a floor with no egg on it is cut short (BAND.dryT): he has cranked, there was a ring to shake,
         // and now he may go after the eggs (bandChase)
-        if ((B.t -= dt) <= 0 || (!this.bandHasEggs(B) && B.dur - B.t >= BAND.dryT)) {
+        if (B.pry) { // the pry: until the eggs are out of the ring he turns (or the bout is over)
+          if ((B.t -= dt) <= 0 || !this.bandPryEggs(B)) { if (!this.bandPryEggs(B)) B.pry = 0; B.dry = 0; B.pk = BAND.pryCalm; this.bandSet(B, 'sit', this.bandRest(0.5)); }
+          break;
+        }
+        const out = !this.bandRingsOk().some((ri) => this.aliveEggs().some((e) => this.reefFit(e) && this.channelOf(e) === ri)); // every egg inside: the pry is next
+        if ((B.t -= dt) <= 0 || (!this.bandHasEggs(B) && B.dur - B.t >= (out ? BAND.pryDry : BAND.dryT))) {
           B.dry = this.bandHasEggs(B) ? 0 : (B.dry || 0) + 1;
           B.miss = this.bandHasEggs(B) ? (B.miss || 0) + 1 : 0; // eggs on his floor and none came to him
-          this.bandSet(B, 'sit', this.bandRest(this.bandHasEggs(B) ? BAND.sit : BAND.tease));
+          this.bandSet(B, 'sit', this.bandRest(this.bandHasEggs(B) ? BAND.sit : out ? 0.8 : BAND.tease));
         }
         break;
       case 'reach': {
@@ -322,7 +347,7 @@ export const banditMethods = {
         if ((B.t -= dt) <= 0) {
           const e = B.eid ? this.eggs.find((q) => q.id === B.eid && q.alive) : null;
           B.eid = 0;
-          if (e) { e.hc = 3; B.sack.push(e.id); this.emit('bandStuff', { ...this.bandHead(B), egg: e, n: B.sack.length }); }
+          if (e) { e.hc = 3; B.sack.push(e.id); B.tk = this.t; this.emit('bandStuff', { ...this.bandHead(B), egg: e, n: B.sack.length }); }
           this.bandSet(B, 'sit', this.bandRest(BAND.sit));
         }
         break;
@@ -340,7 +365,7 @@ export const banditMethods = {
         if ((B.t -= dt) <= 0) {
           this.emit('bandPerch', { ...this.bandHead(B), ring: B.ri });
           if (B.hits >= 2 && !B.whistled && this.bandWeaselT()) { this.bandSet(B, 'whistle', BAND.whistle); B.whistled = 1; }
-          else this.bandSet(B, 'sit', this.bandRest(BAND.tease));
+          else this.bandSet(B, 'sit', this.bandRest(B.pry ? 0.4 : BAND.tease)); // (the pry: straight to work)
         }
         break;
       case 'whistle':
@@ -357,6 +382,7 @@ export const banditMethods = {
     const e = this.bandPick(B);
     if (!e || !this.menaceMay('band', 'reach', this.bandBoss())) return false; // 0.8.19 the menace engine's say
     const p = e.body.getPosition();
+    if (B.pry) { B.pry = 0; B.pk = BAND.pryCalm; } // the pry worked: an egg is out by him
     B.tgt = e.id; B.px = p.x; B.py = p.y;
     this.bandSet(B, 'reach', this.bandTell(BAND.reach));
     this.emit('bandReach', { x: p.x, y: p.y, egg: e, ring: B.ri });
@@ -389,7 +415,9 @@ export const banditMethods = {
       }
       return null;
     }
-    if ((B.dry || 0) < 2 - D.chase && !B.push) return null; // first a crank bout there for nothing (Easy: two); there is always a ring to shake
+    // 0.8.19 no egg on any ring he may sit on (they are all inside): after the first crank bout for nothing (the lesson,
+    // every mode) he goes for the pry (Easy too: the pried ring is a ring to shake as well)
+    if ((B.dry || 0) < 2 - D.chase && !B.push) return (B.dry || 0) >= 1 && !this.bandRingsOk().some((ri) => on(ri).length) ? this.bandPryGo(B, eggs, off) : null; // first a crank bout there for nothing (Easy: two); there is always a ring to shake
     let best = null;
     for (const ri of this.bandRingsOk()) {
       const L = on(ri);
@@ -397,10 +425,21 @@ export const banditMethods = {
       const d = Math.abs(ri - B.ri);
       if (!best || d < best.d || (d === best.d && L.length > best.L.length)) best = { ri, d, L };
     }
-    if (!best) return null;
+    if (!best) return this.bandPryGo(B, eggs, off);
     B.dry = 0;
     const m = best.L.reduce((a, e) => a + off(e), 0) / best.L.length;
     return { ri: best.ri, side: Math.abs(m) < 6 * D2R ? B.side : m > 0 ? 1 : -1 };
+  },
+  // 0.8.19 the pry (BAND.pryR): no egg on a ring he may sit on: in to the floor just outside the outermost eggs
+  bandPryGo(B, eggs, off) {
+    let c = -1;
+    for (const e of eggs) c = Math.max(c, this.channelOf(e));
+    const k = c + 1, ring = this.rings[k];
+    if (B.tk != null && this.t - B.tk < this.bandM(BAND.pryAfter)) return null; // he enjoys his catch a while
+    if (c < 0 || !ring || ring.r < BAND.pryR || ring.motor || ring.gear || this.rings[c].motor || this.rings[c].gear || (k === B.ri && B.pry)) return null;
+    B.dry = 0;
+    const L = eggs.filter((e) => this.channelOf(e) === c), m = L.reduce((a, e) => a + off(e), 0) / L.length;
+    return { ri: k, side: Math.abs(m) < 6 * D2R ? B.side : m > 0 ? 1 : -1, pry: 1 };
   },
   bandEye(B, go) {
     B.go = go; B.see = 0;
@@ -533,6 +572,7 @@ export const banditMethods = {
       const near = Math.hypot(p.x - body.x, p.y - body.y) < 0.55 || Math.hypot(p.x - paw.x, p.y - paw.y) < 0.4;
       if (!near) continue;
       if (e.fire > 0) { this.bandOuch(B, 'hot'); return true; }
+      if ((B.pry || B.pk > 0) && !(e.fire > 0)) continue; // 0.8.19 the eggs (and a chick) he tips out of the pried ring tumble by him
       if (sp > BAND.knockV || (e.chick && sp > 0.6)) { this.bandOuch(B, e.chick ? 'peck' : 'bump'); return true; }
     }
     return false;
