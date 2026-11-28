@@ -528,7 +528,7 @@ export const LEVELS = [
     ],
   },
   {
-    id: 52, theme: "bayou", name: "Froggy Bottom", eggs: 3, target: 2, time: 160, spacing: 1.1, material: "wood", nest: {w: 2.8}, bonus: {kind: "turns", n: 18}, turtle: {ch: 3, a: -80, delay: 6}, mosquito: {ch: 1, a: 40, delay: 9}, frog: {ch: 2, a: -100, delay: 10, every: 8}, tip: "Drop an egg on the frog: it spits out what it took. Drop one on the turtle to flip it.", orbs: [{type: "pepper", ch: 1, a: -58},{type: "decoy", ch: 2, a: -105},{type: "fire_red", ch: 3, a: -99}], seed: 1203689, world: 9,
+    id: 52, theme: "bayou", name: "Froggy Bottom", eggs: 3, target: 2, time: 160, spacing: 1.1, material: "wood", nest: {w: 2.8}, bonus: {kind: "turns", n: 18}, turtle: {ch: 3, a: -80, delay: 6}, mosquito: {ch: 1, a: 40, delay: 9}, frog: {ch: 2, a: -100, delay: 15, every: 8} /* 0.8.19 (proof819): delay 10 -> 15, the planner lost Hard (an egg on the ch3 thorns while the frog held another) */, tip: "Drop an egg on the frog: it spits out what it took. Drop one on the turtle to flip it.", orbs: [{type: "pepper", ch: 1, a: -58},{type: "decoy", ch: 2, a: -105},{type: "fire_red", ch: 3, a: -99}], seed: 1203689, world: 9,
     rings: [
       {gaps: [{a: 62}], thorns: [{a: 133, n: 1}]},
       {gaps: [{a: 101, x: 2}], thorns: [{a: 157, n: 3},{a: 50, n: 2, side: "out", h: 0.26}], pads: [{a: 9, len: 1.22}]},
