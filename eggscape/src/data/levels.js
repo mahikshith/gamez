@@ -87,7 +87,7 @@ export const LEVELS = [
     ],
   },
   {
-    id: 10, theme: "jungle", name: "Monkey Business", eggs: 3, target: 2, time: 65, spacing: 1, material: "wood", nest: {w: 2.8}, bonus: {kind: "turns", n: 14}, monkey: {ch: 2, a: -100, delay: 5}, tip: "Flick the ring Coco hangs from: he lets the egg go.", orbs: [{type: "fire_red", ch: 1, a: 36},{type: "rockskin", ch: 3, a: 61}], kits: {delay: 8}, seed: 871091, world: 2, intro: {title: "Coco the Monkey", line: "Coco grabs eggs with his tail and throws banana peels. Flick his ring hard: whoa, off he flies!"},
+    id: 10, theme: "jungle", name: "Monkey Business", eggs: 3, target: 2, time: 65, spacing: 1, material: "wood", nest: {w: 2.8}, bonus: {kind: "turns", n: 16}, monkey: {ch: 2, a: -100, delay: 5}, tip: "Flick the ring Coco hangs from: he lets the egg go.", orbs: [{type: "fire_red", ch: 1, a: 36},{type: "rockskin", ch: 3, a: 61}], kits: {delay: 8}, seed: 871091, world: 2, intro: {title: "Coco the Monkey", line: "Coco grabs eggs with his tail and throws banana peels. Flick his ring hard: whoa, off he flies!"},
     rings: [
       {gaps: [{a: 57}], thorns: [{a: 147, n: 1}]},
       {gaps: [{a: -153, x: 2},{a: -18}], thorns: [{a: -48, n: 1}], pads: [{a: 45, len: 1.32},{a: 107, len: 1.04}]},
@@ -189,7 +189,7 @@ export const LEVELS = [
     ],
   },
   {
-    id: 20, theme: "crystal", name: "Portal Hall", eggs: 3, target: 2, time: 125, spacing: 1, material: "stone", nest: {w: 2.8}, weather: "current", weatherOpts: {strength: 0.6}, bonus: {kind: "turns", n: 9}, eggKinds: ["duck"], tip: "Three portals, three routes. Pick the one that skips the thorns.", portals: [{a: [1.43,-0.82], b: [-3.16,-1.82], emit: ["bubble","thorn"], every: 9},{a: [-2.49,-0.91], b: [4.03,2.32], emit: ["fire_red","magnet"], every: 10},{a: [3.43,1.25], b: [-2.32,-4.03], emit: ["twin"], every: 12}], orbs: [{type: "magnet", ch: 1, a: 78}], seed: 134626, world: 4,
+    id: 20, theme: "crystal", name: "Portal Hall", eggs: 3, target: 2, time: 125, spacing: 1, material: "stone", nest: {w: 2.8}, weather: "current", weatherOpts: {strength: 0.6}, bonus: {kind: "turns", n: 12}, eggKinds: ["duck"], tip: "Three portals, three routes. Pick the one that skips the thorns.", portals: [{a: [1.43,-0.82], b: [-3.16,-1.82], emit: ["bubble","thorn"], every: 9},{a: [-2.49,-0.91], b: [4.03,2.32], emit: ["fire_red","magnet"], every: 10},{a: [3.43,1.25], b: [-2.32,-4.03], emit: ["twin"], every: 12}], orbs: [{type: "magnet", ch: 1, a: 78}], seed: 134626, world: 4,
     rings: [
       {gaps: [{a: 52}], thorns: [{a: 6, n: 2}]},
       {gaps: [{a: -23, x: 2}], thorns: [{a: -164, n: 2},{a: -168, n: 2, side: "out", h: 0.26}], pads: [{a: 10, len: 1.08}]},
@@ -571,7 +571,7 @@ export const LEVELS = [
     ],
   },
   {
-    id: 56, theme: "lab", name: "Hex Works", eggs: 3, target: 2, time: 85, spacing: 1.05, material: "metal", nest: {w: 2.7}, bonus: {kind: "time", s: 45}, shape: "hex", spider: {ring: 4, delay: 12}, tip: "Shrink ray: small eggs slip through grates, but they crack easier.", orbs: [{type: "shrink", ch: 1, a: -70},{type: "iron", ch: 3, a: 30},{type: "shock", ch: 4, a: -167}], beetle: {ch: 2, delay: 3, a: -86}, seed: 372197, world: 10, intro: {title: "Wind-up beetle", cw: "beetle", line: "Turn the beetle's ring to wind him: he marches the way you turned it, shoves eggs ahead and crushes thorns. Unwound, he is a wall."},
+    id: 56, theme: "lab", name: "Hex Works", eggs: 3, target: 2, time: 85, spacing: 1.05, material: "metal", nest: {w: 2.7}, bonus: {kind: "time", s: 50}, shape: "hex", spider: {ring: 4, delay: 12}, tip: "Shrink ray: small eggs slip through grates, but they crack easier.", orbs: [{type: "shrink", ch: 1, a: -70},{type: "iron", ch: 3, a: 30},{type: "shock", ch: 4, a: -167}], beetle: {ch: 2, delay: 3, a: -86}, seed: 372197, world: 10, intro: {title: "Wind-up beetle", cw: "beetle", line: "Turn the beetle's ring to wind him: he marches the way you turned it, shoves eggs ahead and crushes thorns. Unwound, he is a wall."},
     rings: [
       {gaps: [{a: 124}], thorns: [{a: 45, n: 1}]},
       {gaps: [{a: 164, x: 2},{a: 31, grate: 1}], thorns: [{a: -6, n: 2},{a: -113, n: 2, side: "out", h: 0.26}], pads: [{a: -135, len: 1.03}]},
@@ -581,7 +581,7 @@ export const LEVELS = [
     ],
   },
   {
-    id: 57, theme: "lab", name: "Spiral Spring", eggs: 3, target: 2, time: 75, spacing: 1.05, material: "metal", nest: {w: 2.7}, bonus: {kind: "turns", n: 9}, tip: "Spin storm flings the beetle on its back, but your eggs tumble too.", orbs: [{type: "shrink", ch: 1, a: -87},{type: "iron", ch: 2, a: 10},{type: "spin", ch: 3, a: -11}], beetle: {ch: 3, delay: 6, a: -137}, jack: [{ch: 1, a: 164}], kits: {delay: 7}, seed: 380114, world: 10, intro: {title: "Spring jack", cw: "jack", line: "Roll an egg over the jack and it bounces back up: time it to jump a gap. An iron egg jams it. The spiral ring has no gap: roll down its step."},
+    id: 57, theme: "lab", name: "Spiral Spring", eggs: 3, target: 2, time: 75, spacing: 1.05, material: "metal", nest: {w: 2.7}, bonus: {kind: "turns", n: 11}, tip: "Spin storm flings the beetle on its back, but your eggs tumble too.", orbs: [{type: "shrink", ch: 1, a: -87},{type: "iron", ch: 2, a: 10},{type: "spin", ch: 3, a: -11}], beetle: {ch: 3, delay: 6, a: -137}, jack: [{ch: 1, a: 164}], kits: {delay: 7}, seed: 380114, world: 10, intro: {title: "Spring jack", cw: "jack", line: "Roll an egg over the jack and it bounces back up: time it to jump a gap. An iron egg jams it. The spiral ring has no gap: roll down its step."},
     rings: [
       {gaps: [{a: 89}], thorns: [{a: -170, n: 2}]},
       {gaps: [{a: -168, x: 2},{a: -43}], thorns: [{a: -132, n: 1},{a: 61, n: 1}], pads: [{a: 126, len: 1.37}]},
@@ -601,7 +601,7 @@ export const LEVELS = [
     ],
   },
   {
-    id: 59, theme: "lab", name: "Rocking Lab", eggs: 3, target: 2, time: 80, spacing: 1.05, material: "metal", nest: {w: 3.1}, bonus: {kind: "time", s: 40}, shape: "square", rock: {}, spider: {ring: 2, delay: 8}, tip: "Your eggs start as cannonballs: smash thorns while it lasts. Wait out the lean before you park an egg.", orbs: [{type: "shrink", ch: 0, a: -100},{type: "iron", ch: 0, a: -80},{type: "spin", ch: 3, a: 90}], beetle: {ch: 1, delay: 5, a: -61}, jack: [{ch: 3, a: -170}], seed: 388034, world: 10, intro: {title: "Rocking vault", cw: "rock", line: "The whole vault leans and comes back. Parked eggs slide. Shrink ray plus iron shell make cannonballs: tiny iron eggs that smash thorns and slip through grates."},
+    id: 59, theme: "lab", name: "Rocking Lab", eggs: 3, target: 2, time: 80, spacing: 1.05, material: "metal", nest: {w: 3.1}, bonus: {kind: "time", s: 70}, shape: "square", rock: {}, spider: {ring: 2, delay: 8}, tip: "Your eggs start as cannonballs: smash thorns while it lasts. Wait out the lean before you park an egg.", orbs: [{type: "shrink", ch: 0, a: -100},{type: "iron", ch: 0, a: -80},{type: "spin", ch: 3, a: 90}], beetle: {ch: 1, delay: 5, a: -61}, jack: [{ch: 3, a: -170}], seed: 388034, world: 10, intro: {title: "Rocking vault", cw: "rock", line: "The whole vault leans and comes back. Parked eggs slide. Shrink ray plus iron shell make cannonballs: tiny iron eggs that smash thorns and slip through grates."},
     rings: [
       {gaps: [{a: 47}], thorns: [{a: 88, n: 1}]},
       {gaps: [{a: 78, x: 2},{a: -31},{a: 138, grate: 1}], thorns: [{a: 11, n: 3},{a: -156, n: 2}], pads: [{a: -88, len: 1.86}]},

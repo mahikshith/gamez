@@ -8695,6 +8695,10 @@ function drawLevelIntro(L, acc) {
     });
   };
   const STARH = 64 * s;
+  // the perks in force (the Pacer's dare, the win streak's free boosters, a free try, the egg skin's power): their badges
+  // in the stage's lower right corner, right edge at xr, feet at yb. (The 0.8.19 card rebuild left perkRow uncalled: the
+  // dare could not be taken any more. qa-overlap's pacer-dare state caught it.)
+  const perkCorner = (xr, yb) => { if (!perks.length) return; const f = perks.length > 2 ? 0.86 : 1, wd = (perks.length * PR * 2 + (perks.length - 1) * PG) * f; perkRow(xr - wd, yb - PR * f, f); };
 
   // ---- the chick picker (the chick's face): its power on the hero, the row of chicks, its way in; Back closes it
   const nI = items.length;
@@ -8825,6 +8829,7 @@ function drawLevelIntro(L, acc) {
       stageBack(V, { y: (goals ? sy : y) - g * 0.5 });
       drawStage(V);
       if (goals) goalRow(x0, sy, iw, SH);
+      perkCorner(x0 + iw, V.y + V.h - 6 * s);
       if (nF) faceRow(x0, fy, iw, D);
       header(x0, hdrY, iw);
       bottom(x0, iw, g);
@@ -8850,6 +8855,7 @@ function drawLevelIntro(L, acc) {
       drawStage(V);
       if (nF) { faceRow(rx, by, rw, D); by += faceH(D) + g; }
       if (goals) goalRow(rx, by, rw, SH);
+      perkCorner(V.x + V.w - 8 * s, V.y + V.h - 8 * s);
       header(x0, hdrY, W0);
       bottom(rx, rw, g);
     }
@@ -11294,7 +11300,7 @@ function drawTitle() {
   // 0.8.16 (mykee: "look at the home page, especially the title and the unlock button"): on a tall phone the title
   // spans the page column, the buttons' own edges, and stands clear under the Settings button; nothing shares its
   // row any more (Unlock all moved down into the button block). Shorter screens keep the title between the corners.
-  const tall = !wide && A.h >= A.w * 1.9, SETZ = Math.max(40 * u, 48); // SETZ (lint819): the Settings corner button, a thumb's 48 px at least
+  const tall = !wide && A.h >= A.w * 1.9, SETZ = A.w < 380 ? 44 : Math.max(40 * u, 48), SETO = A.w < 380 ? 0 : 10 * u; // SETZ (lint819): the Settings corner button, a thumb's 48 px at least; SETO: its corner gap, smaller on a narrow phone so it clears the logo
   const logoS = tall ? bw / 5.02 : wide ? Math.min(80 * u, A.w * 0.5 / 7.3, A.h / 5.4) : Math.min(66 * u, A.w / 7.3, A.h / 6);
   const ty = tall ? A.y + 20 * u + SETZ + logoS * 0.57 : A.y + Math.max(16 * u + logoS / 2, Math.min(A.h * 0.12, 72 * u));
   const opw = !!G.opening && G.opening.word(); G.logoAt = { x: lx, y: ty, s: logoS }; // the opening's word flies here and becomes this title
@@ -11356,7 +11362,7 @@ function drawTitle() {
     ctx.restore();
     homeHit('wait:open', gx - Math.max(gS * 0.6, tgw / 2), ty0, Math.max(gS * 1.2, tgw), ground - ty0);
   }
-  pop(0.2, A.x + 10 * u + SETZ / 2, A.y + 10 * u + SETZ / 2, () => { ui.button('settings', '', A.x + 10 * u, A.y + 10 * u, SETZ, SETZ, { kind: 'hud', icon: (c, x, y, sz) => settingsIcon(c, x, y, sz * 1.1, '#fff4dc'), round: 13 * u }); setMarkAt(A.x + 10 * u, A.y + 10 * u, SETZ, SETZ); }); // 0.8.14: the Settings mark
+  pop(0.2, A.x + SETO + SETZ / 2, A.y + SETO + SETZ / 2, () => { ui.button('settings', '', A.x + SETO, A.y + SETO, SETZ, SETZ, { kind: 'hud', icon: (c, x, y, sz) => settingsIcon(c, x, y, sz * 1.1, '#fff4dc'), round: 13 * u }); setMarkAt(A.x + SETO, A.y + SETO, SETZ, SETZ); }); // 0.8.14: the Settings mark
   if (remChipOn()) pop(0.3, A.x1 - 30 * u, A.y + 30 * u, () => drawRemChip(A.x1 - 50 * u, A.y + 10 * u, 40 * u)); // 0.8.17: reminders are off: the bell with a slash, in the other top corner
   // remove ads / buy the game (app, until bought), or Premium's free Chick Charge of the day: 0.8.16, a button of the
   // block, beside Extras (same height, same size of words, the column's right edge), no longer a pill over the title
@@ -11420,7 +11426,7 @@ function drawCrown(cx, cy, s) {
 // the top. Art and layout: render/mapscene.js. Here: the scroll (drag + momentum, like Practice), the stops as buttons,
 // the hen at the next level, world signs, gate cards on worlds behind their star gate, and the fixed header and PLAY.
 const mapWide = () => ui.A.w > ui.A.h * 1.25; // landscape: one header row, PLAY in the corner
-function mapHeaderH() { return (mapWide() ? 14 + 46 + 8 + 20 : 14 + 46 + 12 + 44 + 10 + 26) * ui.u; } // back row, shop/chest row, progress line
+function mapHeaderH() { const u = ui.u, HB = Math.max(46 * u, 48), rh = Math.max(44 * u, 46); return mapWide() ? 14 * u + HB + 8 * u + 20 * u : 14 * u + HB + 12 * u + rh + 10 * u + 26 * u; } // (the header's buttons keep a thumb's size on a small screen: the page under it starts where they end) // back row, shop/chest row, progress line
 function levelPageTop() { return ui.A.y + mapHeaderH(); }
 function mapLayoutNow() {
   const A = ui.A, k = `${W_}x${H_}x${A.x}x${A.y}x${A.w}x${A.h}x${ui.u}`;
