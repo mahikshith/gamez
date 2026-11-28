@@ -1924,7 +1924,7 @@ export function drawBoosterStrip(ui, ctx, x, y, w, h, state) {
   // with what it does, and its tile glows; no free booster is given for it)
   const say = lastTapped && BOOSTERS[lastTapped] && ownedCount(wallet, lastTapped) > 0 ? lastTapped : teach && BOOSTERS[teach] && ownedCount(wallet, teach) > 0 && !selected.has(teach) ? teach : null, tapped = say ? BOOSTERS[say] : null;
   let str = 'BOOSTERS';
-  if (tapped) { const full = `${tapped.name}: ${tapped.line}`; str = ui.measure(full, lab) <= w ? full : tapped.name; }
+  if (tapped) str = tapped.name; // 0.8.19 (mykee, three times: no text explaining the power-ups): its name only; the tap plays what it does on the stage above
   const lw = Math.min(w, ui.measure(str, lab));
   if (!tapped && lw < w - 40 * s) { const ly = y + labH / 2, sw = (w - lw) / 2 - 12 * s; ctx.fillStyle = 'rgba(122,80,40,0.25)'; ctx.fillRect(x, ly, sw, 1.5 * s); ctx.fillRect(x + w - sw, ly, sw, 1.5 * s); }
   ui.text(str, x + w / 2, y + labH / 2, { size: lab, align: 'center', maxW: w, color: tapped ? C.ink : '#9a5a1c', tag: 'strip:label' });

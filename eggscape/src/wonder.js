@@ -716,7 +716,7 @@ export function createWonder(env) {
     const wide = A.w > A.h * 1.15, k = calm ? 1 : ease(S.cardT / 0.45), seed = S.level.id || 0;
     K.dim(0.6 + 0.14 * k);
     const near = st.target >= 2 && st.saved === st.target - 1, timeout = !win && !!g.timeLimit && g.timeLeft <= 0;
-    const title = win ? (stars === 3 ? 'Perfect!' : stars === 2 ? 'Great job!' : 'Vault cracked!') : near ? 'So close!' : timeout ? 'Out of time!' : 'Too many eggs broke';
+    const title = win ? (stars === 3 ? 'Perfect!' : stars === 2 ? 'Great job!' : 'Vault cracked!') : near ? 'So close!' : timeout ? 'Out of time!' : 'Oh no!'; // 0.8.19: the line under the stars says why (the title said "broke", the line "lost")
     const T = {}; // where her place is (the scene's knoll stands under it)
     const henT = Math.max(0, S.cardT - 0.25), R = wide; // R: on a wide screen every block but hers stands in the right column
     const ink = 'rgba(40,22,8,0.9)';

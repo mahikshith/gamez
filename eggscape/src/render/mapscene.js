@@ -1178,11 +1178,12 @@ export function drawGate(ctx, L, w, sy, o) {
     c.fillStyle = 'rgba(255,240,200,0.35)'; c.fillRect(X0 + 8 * u, Y0 + 4 * u, B.w - 16 * u, 2 * u);
     for (const nx of [X0 + 8 * u, -X0 - 8 * u]) blobAt(c, nx, Y0 + 9 * u, 2 * u, '#5a3a1a');
     // a star, have / need, a thin bar
-    const txt = `${o.have} / ${o.need}`, fs = 21 * u;
+    const done = o.have >= o.need, txt = done ? String(o.need) : `${o.have} / ${o.need}`, fs = 21 * u; // 0.8.19: enough stars = the count and a green tick ("39 / 25" with a padlock read as broken; the world before still has to be finished)
     c.font = `600 ${Math.round(fs)}px ${FONT}`; c.textAlign = 'left'; c.textBaseline = 'middle';
-    const tw = c.measureText(txt).width, sr = 11 * u, gx = -(sr * 2 + 6 * u + tw) / 2, ty = Y0 + 21 * u;
+    const tw = c.measureText(txt).width, sr = 11 * u, ck = done ? 22 * u : 0, gx = -(sr * 2 + 6 * u + tw + ck) / 2, ty = Y0 + 21 * u;
     brightStar(c, gx + sr, ty, sr, true);
     c.lineWidth = 4 * u; c.strokeStyle = 'rgba(255,244,214,0.9)'; c.strokeText(txt, gx + sr * 2 + 6 * u, ty + 0.5 * u); c.fillStyle = '#3a2008'; c.fillText(txt, gx + sr * 2 + 6 * u, ty + 0.5 * u);
+    if (done) { const kx = gx + sr * 2 + 6 * u + tw + 7 * u; c.lineCap = 'round'; c.lineJoin = 'round'; for (const [lw, col] of [[6.5 * u, 'rgba(255,244,214,0.95)'], [3.6 * u, '#3f9a22']]) { c.beginPath(); c.moveTo(kx, ty + 1 * u); c.lineTo(kx + 4.5 * u, ty + 5.5 * u); c.lineTo(kx + 12 * u, ty - 5 * u); c.lineWidth = lw; c.strokeStyle = col; c.stroke(); } }
     const bw2 = B.w - 30 * u, by2 = Y0 + B.h - 15 * u, fr = clamp(o.have / Math.max(1, o.need), 0, 1);
     rrect(c, -bw2 / 2, by2, bw2, 7 * u, 3.5 * u); c.fillStyle = 'rgba(58,32,8,0.45)'; c.fill();
     if (fr > 0) { rrect(c, -bw2 / 2, by2, Math.max(7 * u, bw2 * fr), 7 * u, 3.5 * u); c.fillStyle = lg(c, 0, by2, 0, by2 + 7 * u, ['#ffe27a', '#f0a018']); c.fill(); }

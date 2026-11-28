@@ -1527,7 +1527,7 @@ async function press(id) {
       // allies (v3.5): free on Easy and after a fail; otherwise a rewarded ad (never costs progress, the button stays on a miss)
       if (G.screen !== 'play' || !allyShown()) break;
       if (!allyKinds().some((k) => G.sim.allyCan(k))) { toast('Not yet', 1.6); break; } // 0.8.18: three words at most in play
-      if (G.roosterCoach) { save.seen = { ...(save.seen || {}), rooster: 1 }; persist(); G.allyAd = true; G.roosterCoach = false; } // the lesson: his first call is on the house
+      if (G.roosterFirst) { save.seen = { ...(save.seen || {}), rooster: 1 }; persist(); G.allyAd = true; G.roosterCoach = G.roosterFirst = false; } // the lesson: his first call is on the house
       if (!allyFree() && !G.allyAd && save.wallet.tickets.ally > 0) { // an Ally Ticket (shop) stands in for the ad
         const w = E.useTicket(save.wallet, 'ally');
         if (w) { save.wallet = w; persist(); G.allyAd = true; toast(`Ticket used`, 1.6); }
@@ -6726,7 +6726,10 @@ function drawAllyBtn() {
     ctx.lineWidth = 2.5 * u; ctx.strokeStyle = `rgba(255,224,120,${0.7 * (1 - p)})`; ctx.stroke();
   }
   const tk = save.wallet.tickets.ally;
-  const coach = !!(can && !G.allyOpen && !(save.seen && save.seen.rooster) && G.li >= 0);
+  // 0.8.19: the coach shows for 8 s of a level, not the whole level (a bubble that never leaves is a nag)
+  const coach0 = !!(can && !G.allyOpen && !(save.seen && save.seen.rooster) && G.li >= 0);
+  if (coach0 && (!G.roosterCoachAt || G.roosterCoachAt.run !== G.run)) G.roosterCoachAt = { run: G.run, t0: G.t };
+  const coach = coach0 && G.t - G.roosterCoachAt.t0 < 8;
   // 0.8.15 speed: the button and its badge stand still (hudLayer) unless it is pressed, coached or open
   const still = !btnLive('ally') && !coach && !G.allyOpen;
   const face = () => {
@@ -6734,7 +6737,7 @@ function drawAllyBtn() {
     if (!still) return;
     if (!free && can && tk > 0) allyTicket(x, y, bs, tk); else if (!free && can) drawAdBadge(ctx, x + bs - 21 * u, y + bs - 15 * u, 22 * u, 16 * u);
   };
-  G.roosterCoach = coach; G.roosterRun = G.run; // (the tour: the flag counts only on the run that drew it)
+  G.roosterCoach = coach; G.roosterFirst = coach0; G.roosterRun = G.run; // (the tour: the flag counts only on the run that drew it)
   allyIconLive = !still && !save.calm && can;
   if (still) { allyIconLive = false; hudLayer('ally', W_ + ',' + H_ + '|' + (can ? 1 : 0) + (free ? 1 : 0) + '|' + Math.min(tk || 0, 99) + '|' + G.henSkinCur + '|' + (save.calm ? 1 : 0), x - 3 * u, y - 3 * u, bs + 12 * u, bs + 9 * u, face); return; }
   face(); allyIconLive = false;
@@ -6750,7 +6753,7 @@ function drawAllyBtn() {
     if (!save.calm) teachHand(ctx, x + bs * 0.62, y + bs * (press ? 0.3 : 0.42), bs * 0.8, press, 1);
   }
   if (!free && can && tk > 0) allyTicket(x, y, bs, tk); // "Use ticket (N)": a red ticket stub with the count instead of the ad badge
-  else if (!free && can && !G.roosterCoach) drawAdBadge(ctx, x + bs - 21 * u, y + bs - 15 * u, 22 * u, 16 * u);
+  else if (!free && can && !G.roosterFirst) drawAdBadge(ctx, x + bs - 21 * u, y + bs - 15 * u, 22 * u, 16 * u);
   if (!G.allyOpen) return;
   const cw = 124 * u, ch = 46 * u;
   kinds.forEach((k, i) => {
@@ -10560,7 +10563,8 @@ function winDouble(r, x, y, w, bh, s) {
   ui.text('x2', 0, 0, { size: 40 * s, align: 'center', color: '#ffe45c', stroke: '#3a1a7a', strokeW: 6 * s, noRecord: true });
   ctx.restore();
   ui.record({ x: tx - 30 * s, y: cy - 34 * s, w: 60 * s, h: 40 * s }, 'win:dblx2', grp);
-  if (n > 0) { const v = Math.round(n * (1 + clamp(sp, 0, 1))); ui.text('+' + v, tx, cy + 22 * s, { size: 22 * s, align: 'center', color: '#fff', stroke: '#2b1566', strokeW: 4 * s, maxW: w * 0.4, noRecord: true }); ui.record({ x: tx - 30 * s, y: cy + 11 * s, w: 60 * s, h: 22 * s }, 'win:dbln', grp); }
+  if (n > 0) { const v = n * 2; // 0.8.19: what the video gives, steady (it rolled +30, +60, +30 in the loop: a reward that shrinks)
+    ui.text('+' + v, tx, cy + 22 * s, { size: 22 * s, align: 'center', color: '#fff', stroke: '#2b1566', strokeW: 4 * s, maxW: w * 0.4, noRecord: true }); ui.record({ x: tx - 30 * s, y: cy + 11 * s, w: 60 * s, h: 22 * s }, 'win:dbln', grp); }
   ctx.restore();
 }
 // what moves over the page during its sequence: the points coming in from the score's sides (then soft sparkles there),
@@ -11215,7 +11219,7 @@ function drawFailPage() {
     stH = clamp(roomU - rest - 24, 130, 260);
   }
   if (G.li >= 0 && G.screenT > 0.6) spendOnce('fail', 'fail', SC);
-  const title = near ? 'So close!' : timeout ? 'Out of time!' : 'Too many eggs broke';
+  const title = near ? 'So close!' : timeout ? 'Out of time!' : 'Oh no!'; // 0.8.19: the line under the stars says why (the title said "broke", the line "lost")
   const card = stackCard(title, build(stH), { ...(sd ? sd.cardO : { full: true }), ribbon: near ? '#e0882a' : '#5a82c8', minS: u, scroll: G.fscroll, grow: 1.2, evening: true });
   if (sd) {
     const { box, henH } = sideStage(sd, { y: card.y, h: ui.A.y1 - card.y }); // (lint819: her stage runs to the screen's foot whatever the card holds, so her size and the sky over her never change)
