@@ -2481,6 +2481,8 @@ function drawModals() {
   ui.buttons.length = 0; ui.rects.length = 0;
   const hb = G.hudBottom;
   if (G.screen === 'store' || G.screen === 'title') G.hudBottom = 0; // no HUD under these
+  const pk = xfPopK(); // 0.8.19: every pop-up pops up (xfPopK)
+  if (pk !== 1) { XF.pop = true; ctx.save(); ctx.translate(ui.A.cx, ui.A.cy); ctx.scale(pk, pk); ctx.translate(-ui.A.cx, -ui.A.cy); }
   try {
     if (G.got) { if (G.party) drawParty(true); drawGot(); } // the coins' reveal runs over the unlock party's stage
     else if (G.party) drawParty();
@@ -2497,7 +2499,8 @@ function drawModals() {
     else if (G.treasure) drawTreasure();
     else if (G.skipAsk) drawSkipAsk();
     else if (G.stuckAsk) drawStuckAsk();
-  } finally { G.hudBottom = hb; }
+    xfModalBox();
+  } finally { G.hudBottom = hb; if (pk !== 1) { ctx.restore(); XF.pop = false; } }
 }
 // ---- boss treasure (2026-11-19, mykee: "after clearing a boss level, show some treasure, the unlockables, the new birds;
 // as levels go on new villains come: show what is coming and how it connects"). A chest stands beside every boss on the
@@ -6070,7 +6073,79 @@ function lastEggMoment(sim) {
 const MENU_FX = { title: 1, levels: 1, store: 1, extras: 1, practice: 1, info: 1, intro: 1, pause: 1, win: 1, fail: 1, spin: 1 };
 const SCENE_SCREENS = { title: 1, store: 1, practice: 1, levels: 1, spin: 1 }; // these paint a full themed scene (0.8.10: the map paints its own whole picture too, and the wash, drawn after it, dimmed its header and PLAY); the others keep the game behind and get a wash
 function menuFx() { if (MENU_FX[G.screen] && !SCENE_SCREENS[G.screen]) themeWash(ctx, ui.skin, W_, H_); if (MENU_FX[G.screen]) menuFxBack(ctx, ui.skin, save, W_, H_, ui.u, DPR, G.t); }
-function renderAll() { themeTick(G.t, save.calm || PERF.low); render(); drawSkipChip(); if (MENU_FX[G.screen] && !(G.infoFrom === 'wonder' && G.screen === 'info')) menuFxFront(ctx, ui.skin, save, ui.buttons, H_, ui.u, G.t); purse.draw(ctx, ui.u, ui.A, drawCoin, ui); spendDraw(); LAND_KIT.ui = ui; prizePop.draw(ctx, ui.u, ui.A, LAND_KIT); if (G.adBusy) drawAdWait(W_, H_); } // + snow piles on the buttons, the gold sweep; the ad wait over every screen (title, map, Wonder included)
+// ---- 0.8.19 transitions (mykee, 2026-11-27: "proper smoother animations during the UI or during the transitions ... pop-ups,
+// pop-downs, we should make it happen everywhere"). ONE mechanism for every page, sheet and pop-up: when the page or the
+// overlay on it changes, the frame that is still on the canvas (the leaving page's last picture) is copied once into one
+// kept canvas and eased OUT over the arriving page: a page fades with a slight grow (forward) or shrink (back), a pop-up
+// that closes pops DOWN (its own content shrinks to 0.9 and fades, the shade around it fades in place). The arriving page
+// is live from its first frame (its own entrance plays under the leaving picture), so a tap in a transition always goes
+// to the arriving page and never to the dead one. Nothing in a page, the clock or the sim is touched: this is paint only.
+// Cheap: one drawImage a frame for under a quarter second, no blur, nothing made per frame. Low graphics: the plain fade.
+// Calm motion: a short plain fade.
+const XF = { cv: null, cx: null, scr: null, ov: 0, mod: '', tab: '', mT0: -9, pop: false, t0: -9, dur: 0, mode: 0, dir: 1, box: false, mx: 0, my: 0, mw: 0, mh: 0, bx: 0, by: 0, bw: 0, bh: 0 };
+const XF_DEPTH = { title: 0, levels: 1, intro: 2, play: 3, pause: 4, win: 4, fail: 4 };
+function xfModal() {
+  if (!modalOpen()) return '';
+  return G.got ? 'got' : G.party ? 'party' : G.parent ? 'parent' : G.waitList ? 'wait' : G.getMore ? 'more' : G.chickBuy ? 'chick' : G.detail ? 'detail' : G.offer ? 'offer' : G.nudge ? 'nudge' : G.ageAsk ? 'age' : G.remAsk ? 'rem' : G.leaveAsk ? 'leave' : G.treasure ? 'treasure' : G.skipAsk ? 'skip' : 'stuck';
+}
+function xfModalBox() { // the pop-up just drawn: where its content is (drawModals starts the frame's records afresh, so they are all its own)
+  let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+  for (let i = 0; i < ui.rects.length; i++) { const r = ui.rects[i]; if (r.x < x0) x0 = r.x; if (r.y < y0) y0 = r.y; if (r.x + r.w > x1) x1 = r.x + r.w; if (r.y + r.h > y1) y1 = r.y + r.h; }
+  for (let i = 0; i < ui.buttons.length; i++) { const r = ui.buttons[i]; if (r.x < x0) x0 = r.x; if (r.y < y0) y0 = r.y; if (r.x + r.w > x1) x1 = r.x + r.w; if (r.y + r.h > y1) y1 = r.y + r.h; }
+  const p = 26 * ui.u;
+  XF.mx = x0 - p; XF.my = y0 - p; XF.mw = x1 - x0 + 2 * p; XF.mh = y1 - y0 + 2 * p;
+}
+// a pop-up pops UP: its content grows from 0.9 with a small overshoot (backK) in its first fifth of a second; the shade
+// under it does not move (dim). The ones with an entrance of their own (the leave page, a reveal, the party, a chest) keep it.
+function xfPopK() {
+  const el = G.t - XF.mT0, m = XF.mod;
+  if (save.calm || !(el >= 0 && el < 0.2) || m === 'got' || m === 'party' || m === 'leave' || m === 'treasure' || !m) return 1;
+  return 0.9 + 0.1 * backK(el / 0.2);
+}
+function xfWatch() { // before the frame is drawn: has the page or its overlay changed since the last one?
+  const scr = G.screen, ov = (G.settingsOpen ? 1 : 0) + (G.setSub ? 2 : 0) + (G.album ? 4 : 0), mod = xfModal(), tab = scr === 'store' ? G.storeTab : '';
+  if (XF.scr === scr && XF.ov === ov && XF.mod === mod && XF.tab === tab) return;
+  const pScr = XF.scr, pOv = XF.ov, pMod = XF.mod;
+  XF.scr = scr; XF.ov = ov; XF.mod = mod; XF.tab = tab;
+  if (mod && mod !== pMod) XF.mT0 = G.t;
+  if (pScr == null || !G.sim || G.opening || !canvas.width || !canvas.height) return;
+  if (!XF.cv) { XF.cv = document.createElement('canvas'); XF.cx = null; }
+  if (XF.cv.width !== canvas.width || XF.cv.height !== canvas.height) { XF.cv.width = canvas.width; XF.cv.height = canvas.height; XF.cx = null; }
+  if (!XF.cx) XF.cx = XF.cv.getContext('2d', { alpha: false });
+  if (!XF.cx) return;
+  XF.cx.setTransform(1, 0, 0, 1, 0, 0); XF.cx.drawImage(canvas, 0, 0);
+  const plain = save.calm || PERF.low;
+  XF.box = false;
+  if (pScr !== scr) { // a page change: forward grows away, back shrinks away; into and out of a running level only fades (the board never jumps)
+    const a = XF_DEPTH[pScr] ?? 5, b = XF_DEPTH[scr] ?? 5;
+    XF.mode = plain || pScr === 'play' || scr === 'play' ? 0 : 1; XF.dir = b >= a ? 1 : -1; XF.dur = 0.22;
+  } else if (pMod !== mod && !mod) { // a pop-up closed: it pops down
+    XF.mode = plain ? 0 : 2; XF.dur = 0.17;
+    if (XF.mw > 0 && XF.mw * XF.mh < W_ * H_ * 0.8) { XF.box = true; XF.bx = XF.mx; XF.by = XF.my; XF.bw = XF.mw; XF.bh = XF.mh; }
+  } else if (pMod === mod && ov < pOv) { XF.mode = plain ? 0 : 2; XF.dur = 0.17; } // Settings, Extras or the album closed: the same pop down, the whole sheet
+  else if (pMod === mod && ov > pOv) { XF.mode = plain ? 0 : 1; XF.dir = 1; XF.dur = 0.2; } // Settings, Extras or the album opened: a page forward
+  else { XF.mode = 0; XF.dur = 0.18; } // something opened (its own pop plays), or one sheet gave way to another: the old picture fades off it
+  if (save.calm) XF.dur = 0.12;
+  XF.t0 = G.t;
+}
+function xfDraw() { // after the frame is drawn: the leaving picture, easing out over it
+  const p = (G.t - XF.t0) / XF.dur;
+  if (!(p >= 0 && p < 1) || !XF.cv) return;
+  const c = XF.cv, cw = canvas.width, ch = canvas.height;
+  if (c.width !== cw || c.height !== ch) { XF.t0 = -9; return; } // the screen turned or the quality stepped: no stale picture
+  const e = 1 - (1 - p) * (1 - p), a = (1 - p) * (1 - p);
+  ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = a; ctx.globalCompositeOperation = 'source-over';
+  if (XF.mode === 1) { const k = 1 + XF.dir * 0.06 * e; ctx.translate(cw / 2, ch / 2); ctx.scale(k, k); ctx.drawImage(c, -cw / 2, -ch / 2); }
+  else if (XF.mode === 2 && XF.box) {
+    const bx = XF.bx * DPR, by = XF.by * DPR, bw = XF.bw * DPR, bh = XF.bh * DPR, k = 1 - 0.1 * e;
+    ctx.save(); ctx.beginPath(); ctx.rect(0, 0, cw, ch); ctx.rect(bx, by, bw, bh); ctx.clip('evenodd'); ctx.drawImage(c, 0, 0); ctx.restore(); // the shade around it: fades where it is
+    ctx.beginPath(); ctx.rect(bx, by, bw, bh); ctx.clip();
+    ctx.translate(bx + bw / 2, by + bh / 2); ctx.scale(k, k); ctx.drawImage(c, -(bx + bw / 2), -(by + bh / 2));
+  } else if (XF.mode === 2) { const k = 1 - 0.07 * e; ctx.translate(cw / 2, ch / 2); ctx.scale(k, k); ctx.drawImage(c, -cw / 2, -ch / 2); }
+  else ctx.drawImage(c, 0, 0);
+  ctx.restore();
+}
+function renderAll() { xfWatch(); themeTick(G.t, save.calm || PERF.low); render(); drawSkipChip(); if (MENU_FX[G.screen] && !(G.infoFrom === 'wonder' && G.screen === 'info')) menuFxFront(ctx, ui.skin, save, ui.buttons, H_, ui.u, G.t); purse.draw(ctx, ui.u, ui.A, drawCoin, ui); spendDraw(); LAND_KIT.ui = ui; prizePop.draw(ctx, ui.u, ui.A, LAND_KIT); if (G.adBusy) drawAdWait(W_, H_); xfDraw(); } // + snow piles on the buttons, the gold sweep; the ad wait over every screen (title, map, Wonder included)
 function drawStoreScreen() { // the shop's toast floats over its scrolling list (like a clipped card, it records nothing)
   drawStore(ui, ctx, W_, H_, { ...storeState(), area: ui.A, adReady: adCd() === 0, adCooldownLeft: adCd(), adCoins: adCoins(), tab: G.storeTab, scroll: G.sscroll, dragging: !!(G.pdrag && G.pdrag.moved), featured: storeFeatured() }); { const ci = ui.rects.find((r) => r.tag === 'store:coinicon'); if (ci) purse.at({ x: ci.x + ci.w / 2, y: ci.y + ci.h / 2 }); } const n0 = ui.rects.length; drawToast(); ui.rects.length = n0; menuFx(); /* the shop paints its own backdrop: the effect drifts over it */
 }
@@ -6554,6 +6629,7 @@ function drawCard() {
 
 function dim(a = 0.55) {
   ctx.fillStyle = `rgba(24,12,5,${a})`;
+  if (XF.pop) { ctx.save(); ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.fillRect(0, 0, W_, H_); ctx.restore(); return; } // (a pop-up popping up: its shade stays the whole screen)
   ctx.fillRect(0, 0, W_, H_);
 }
 // frame818 (owner: nothing under a reveal may read through): the reveals' own ground, a deep warm brown lit where the
