@@ -364,6 +364,7 @@ export function drawCrawler(ctx, x, y, s, t = 0, opts = {}, species = 'salamande
 }
 
 function drawBody(ctx, x0, y0, s, t, opts) {
+  const baseA = ctx.globalAlpha; // 0.8.19: a caller's fade (the chameleon's vanish) carries through
   const U = s / 100;
   const pose = opts.pose || 'walk';
   const p = clamp(opts.p || 0, 0, 1);
@@ -510,7 +511,7 @@ function drawBody(ctx, x0, y0, s, t, opts) {
   for (const L of SP._legs) feet.push(footFor(L, gait, P, path, U, t, belly));
   if (opts.out) opts.out.feet = feet.map((f) => ({ x: f.fx + x0, y: f.fy + y0, lift: f.lift }));
 
-  ctx.globalAlpha = fadeA;
+  ctx.globalAlpha = baseA * fadeA;
   // ---- ground shadow (unreared body, offset down-right like the snake)
   const so = 3.2 * U;
   if (P.rear > 0) for (let i = 0; i < hipI; i++) {
@@ -623,7 +624,7 @@ function drawBody(ctx, x0, y0, s, t, opts) {
   let fu = faceUp[id] === undefined ? (upness >= 0 ? 1 : -1) : faceUp[id];
   if (upness > 0.3) fu = 1; else if (upness < -0.3) fu = -1;
   faceUp[id] = fu;
-  ctx.globalAlpha = 1;
+  ctx.globalAlpha = baseA;
   if (P.dazed > 0.3) dizzyStars(ctx, hcx, hcy - 10 * U, 30 * U, 10 * U, t, { layer: 'back', size: 9.5 * U, fade: clamp((P.dazed - 0.3) / 0.4, 0, 1) });
   if (P.melt > 0.75) { // only the eyes float on the puddle
     ctx.save();
@@ -633,7 +634,7 @@ function drawBody(ctx, x0, y0, s, t, opts) {
     for (const sd of [-1, 1]) drawEye(ctx, SP.head.eyeX * 0.6, sd * SP.head.eyeY * 0.7, sd, t, blinkAt(t, 0.4), { x: 0, y: 0 }, P, lw / hs, K, fu);
     ctx.restore();
   } else {
-    ctx.globalAlpha = fadeA;
+    ctx.globalAlpha = baseA * fadeA;
     ctx.save();
     ctx.translate(hcx, hcy);
     ctx.rotate(ha);
@@ -642,7 +643,7 @@ function drawBody(ctx, x0, y0, s, t, opts) {
     drawHead(ctx, t, opts, P, glow, cool, lw / hs, K, fu, lineA);
     ctx.restore();
   }
-  ctx.globalAlpha = 1;
+  ctx.globalAlpha = baseA;
 
   // ---- fire jet (salamander) / tongue (chameleon)
   const ca = Math.cos(ha), sa = Math.sin(ha);

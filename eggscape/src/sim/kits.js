@@ -40,13 +40,13 @@ export const KITS = {
   n: m3(2, 3, 3), // kits in the sack
   fails: m3(2, 3, 3), // failed fetches before mama gives up
   delay: 6, // s into the level she walks in (level.kits.delay)
-  stroll: 0.7, // m/s mama walking in / off
+  stroll: 1.4, // m/s mama walking in / off (0.8.19 feel: she bustles in, the kits are out sooner)
   untie: 2.2, untie2: 1.3, // s the flourish (first time / later), the kits tumble out at UNTIE_POP of it
   pop: 1.5, // s tumbling out, shaking themselves, sniffing
   run: 1.1, // m/s across the yard
   climbIn: 1.4, // s the kit tower over the rim
-  walk: m3(0.42, 0.5, 0.58), // m/s along a floor, empty-handed
-  carry: m3(0.2, 0.25, 0.3), // m/s with an egg (slowly)
+  walk: m3(0.5, 0.62, 0.72), // m/s along a floor, empty-handed (0.8.19 feel: they scamper straight for an egg)
+  carry: m3(0.28, 0.32, 0.4), // m/s with an egg (0.8.19 feel: a hurried heave, about 6 s on Medium; faster and a gap turned under them gently could never catch them)
   up: 0.75, down: 0.9, hop: 0.6, // s a crossing up through a gap / down through one / a hop over a hole
   lift: 1.25, // s gathering round the egg and heaving (the telegraph; 0.8.19: x DYN.kits tell, see kitTell)
   out: 1.8, // s over the rim with the egg and down to the yard

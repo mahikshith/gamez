@@ -159,6 +159,7 @@ function bodyPath(ctx, k, ox, oy, X, Y, I0, WM) {
 }
 
 function drawBody(ctx, name, x0, y0, s, t, opts) {
+  const baseA = ctx.globalAlpha; // 0.8.19: a caller's fade (the chameleon's vanish) carries through
   const D = name === 'thornback' && opts.skin === 'crystal' ? defs().thornCrystal : defs()[name], sp = SPECIES[name], U = s / 100, pose = opts.pose || 'walk';
   const P = poseParams(pose, clamp(opts.p || 0, 0, 1));
   if (opts.blend) for (const c in P) if (opts.blend[c] !== undefined) P[c] = opts.blend[c];
@@ -272,7 +273,7 @@ function drawBody(ctx, name, x0, y0, s, t, opts) {
     bodyPath(ctx, 1, so * 1.4, so * 1.9, SX, SY, I0, WM); ctx.fill();
     ctx.beginPath(); ctx.ellipse(SX[3] + so * 1.2 + 5 * P.rear * U, SY[3] + so * 1.7 + 7 * P.rear * U, D.shadow[0] * hs, D.shadow[1] * hs, ha, 0, TAU); ctx.fill();
   }
-  ctx.globalAlpha = fadeA;
+  ctx.globalAlpha = baseA * fadeA;
 
   // ---- legs under the body (on its back, or reared, they come over it)
   const LEGS = D.legs || (D.legs = [{ g: U_SH, side: -1, off: 0, front: true }, { g: U_SH, side: 1, off: 0.5, front: true }, { g: U_HIP, side: -1, off: 0.5, front: false }, { g: U_HIP, side: 1, off: 0, front: false }]);
@@ -296,17 +297,17 @@ function drawBody(ctx, name, x0, y0, s, t, opts) {
 
   // ---- head
   const stars = P.dazed > 0.3 ? { size: 10 * U, fade: clamp((P.dazed - 0.3) / 0.4, 0, 1) } : null;
-  ctx.globalAlpha = 1;
+  ctx.globalAlpha = baseA;
   if (stars) dizzyStars(ctx, hcx, hcy - 12 * U, 30 * U, 10.5 * U, t, { ...stars, layer: 'back' });
   E.lwH = lw / hs;
   ctx.save();
   if (P.melt > 0.75) { ctx.translate(hcx, hcy + 6 * U * P.melt); ctx.rotate(ha); ctx.scale(hs, hs); D.eyesOnly(ctx, E); } else {
-    ctx.globalAlpha = fadeA;
+    ctx.globalAlpha = baseA * fadeA;
     ctx.translate(hcx, hcy); ctx.rotate(ha); ctx.scale(hs, hs);
     D.head(ctx, E);
   }
   ctx.restore();
-  ctx.globalAlpha = 1;
+  ctx.globalAlpha = baseA;
   E.hcx = hcx; E.hcy = hcy;
   if (D.after) D.after(ctx, E);
   // faces3: a puzzled "?" over the head (opts.mood 'huh', opts.moodK 0..1), upright on screen whatever the heading

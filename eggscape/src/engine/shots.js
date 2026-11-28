@@ -24,6 +24,9 @@ export const SHOTS = {
   user: 4, // s the player's own zoom is left alone
   minK: 0.6, // never wider than this share of the whole-vault scale
   smooth: 0.45, smoothEst: 0.36, smoothHit: 0.2, smoothLate: 0.24, calmSlow: 1.7, // (late: an acting body is outside the frame right now)
+  // 0.8.19 the speed limit: no camera move under the director goes faster than this (CSS px of pan per s, ln-zoom per s).
+  // (L57: a waiting villain's door far off the vault pulled an establishing move at the 'late' smoothing: a jolt)
+  maxPan: 300, maxZoom: 0.6,
 };
 const ss = (x) => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); };
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -48,6 +51,13 @@ export function fit(T, boxes, view, kMin = 0) {
   return { x: x1 - x0 > 2 * hw ? (x0 + x1) / 2 : clamp(T.x, x1 - hw, x0 + hw), y: y1 - y0 > 2 * hh ? (y0 + y1) / 2 : clamp(T.y, y1 - hh, y0 + hh), k };
 }
 // how much of a body's box lies outside the frame cam (0..1); the audit's measure
+// 0.8.19 the speed limit (SHOTS.maxPan, SHOTS.maxZoom): the camera's step from prev to next over dt s, clamped
+export function limitStep(prev, next, dt) {
+  if (!(dt > 0)) return next;
+  const k = Math.max(1e-6, prev.k), dx = (next.x - prev.x) * k, dy = (next.y - prev.y) * k, d = Math.hypot(dx, dy), m = SHOTS.maxPan * dt;
+  const f = d > m ? m / d : 1, lz = Math.log(next.k / k), mz = SHOTS.maxZoom * dt;
+  return { x: prev.x + (next.x - prev.x) * f, y: prev.y + (next.y - prev.y) * f, k: k * Math.exp(Math.max(-mz, Math.min(mz, lz))), slowed: f < 1 || Math.abs(lz) > mz };
+}
 export function outside(a, cam, view) {
   const r = a.r || 0.4, hw = view.w / (2 * cam.k), hh = view.h / (2 * cam.k);
   const ix = Math.max(0, Math.min(a.x + r, cam.x + hw) - Math.max(a.x - r, cam.x - hw)), iy = Math.max(0, Math.min(a.y + r, cam.y + hh) - Math.max(a.y - r, cam.y - hh));
@@ -123,9 +133,13 @@ export function direct(S, base, cast, eggs, view, o) {
       smooth = lerp(smooth, SHOTS.smoothHit, w);
     }
   }
+  // 0.8.19 the STAGE (o.stage: what the resting frame shows of the vault, and every den): a directed frame holds it too,
+  // zooming out a little rather than sliding the vault or a den off the screen (L6: the weasel's den was cut in half).
+  // Not the power's close-up, not the pinch lesson (they are meant to push in)
+  if (o.stage && o.stage.length && !S.hit && demo === 1) T = fit(T, [...o.stage, ...boxes, ...eggBoxes], view, kMin);
   if (demo !== 1) T.k *= demo;
   if (calm) smooth *= SHOTS.calmSlow;
-  if (o.cam && acting.some((a) => outside(a, o.cam, view) > 0.15)) smooth = Math.min(smooth, SHOTS.smoothLate); // somebody acts out of frame: get there now
+  if (o.cam && acting.some((a) => !a.lead && outside(a, o.cam, view) > 0.15)) smooth = Math.min(smooth, SHOTS.smoothLate); // somebody acts out of frame: get there now (not a door a villain has yet to come out of)
   S.on = true;
   return (S.last = { x: T.x, y: T.y, k: T.k, smooth });
 }

@@ -168,14 +168,14 @@ export function drawCham26(ctx, sim, C, k, t, calm = false) {
   if (nap) o.blink = 1;
   else if (C.ph === 'miss') { const el = C.dur - C.t; o.blink = el > 0.4 && el < 0.95 ? (Math.sin((el - 0.4) * 22) > 0 ? 0.85 : 0.35) : undefined; } // annoyed blinks
   const gk = ghostK(C); // (aggroB) vanish: he fades to a faint glassy ripple and creeps, then pops back in a flourish
-  if (gk > 0) ctx.globalAlpha = alpha * (1 - 0.86 * gk);
+  if (gk > 0) ctx.globalAlpha = alpha * (1 - gk);
   ctx.scale(1 / k, -1 / k);
-  drawCrawler(ctx, sn.x * k, -sn.y * k, L * k, frozen ? st.hold : t, o, 'chameleon');
+  if (gk < 0.995) drawCrawler(ctx, sn.x * k, -sn.y * k, L * k, frozen ? st.hold : t, o, 'chameleon'); // 0.8.19: gone is not drawn
   // the orb rides the tongue's tip back in
   if (C.ph === 'reel' && C.held && out.tongue) drawOrb(ctx, C.held.type, out.tongue.x, out.tongue.y, 0.2 * k * (0.75 + 0.25 * out.tongue.k), t, true);
   ctx.scale(k, -k);
   ctx.globalAlpha = alpha;
-  if (gk > 0) ghost(ctx, C, S, L, gk, t, calm);
+  if (gk > 0) ghost(ctx, sim, C, S, L, gk, t, calm);
   if (S.shim > 0) shimmer(ctx, S, L, t);
   if (C.ph === 'digest' && t - S.gulpT < 0.75) gulp(ctx, S, L, (t - S.gulpT) / 0.75, C);
   if (C.ph === 'lock') throat(ctx, S, clamp(1 - C.t / CHAM.lock, 0, 1), t);
@@ -192,19 +192,38 @@ export function drawCham26(ctx, sim, C, k, t, calm = false) {
 
 // (aggroB) the vanish: 0 = seen, 1 = a ghost (fade in, ghost walk, pop out)
 function ghostK(C) {
-  if (C.ph === 'fade') return sstep(1 - clamp(C.t / (C.dur || 1), 0, 1));
+  // 0.8.19: the fade is over in VANISH_SEEN s (a shimmer), the rest of the sim's fade phase he is already gone
+  if (C.ph === 'fade') return sstep(clamp((C.dur - C.t) / VANISH_SEEN, 0, 1));
   if (C.ph === 'pop') return 1 - sstep((C.dur - C.t) / (C.dur || 1));
   return C.gh ? 1 : 0;
 }
-// a ghost is still fair to track: a faint heat-ripple runs along his back; the pop is a ring of leaf-green colour
-function ghost(ctx, C, S, L, gk, t, calm) {
-  ctx.save(); ctx.lineCap = 'round'; ctx.strokeStyle = '#e8fff4'; ctx.lineWidth = 0.025;
-  for (let i = 0; i < 6; i++) {
-    const d = L * (0.1 + 0.22 * i), c = bodyAt(S, d), w = (calm ? 0.5 : 0.5 + 0.5 * Math.sin(t * 7 - i * 1.3));
-    ctx.globalAlpha = 0.35 * gk * w; ctx.beginPath(); ctx.arc(c.x, c.y, 0.07 + 0.03 * w, 0, TAU); ctx.stroke();
+const VANISH_SEEN = 0.35; // s
+// 0.8.19 the vanish is a real vanish (the owner: "it should go fully invisible and show up somewhere else"): while he
+// fades a glassy shimmer sparkles off him; gone, nothing of him is drawn (Easy keeps a faint heat-ripple so a small kid can
+// still follow him); the pop is a telegraph right where he comes back: a leaf-green ring closes on the spot and a burst of
+// colour, then the lock tell (never under TELL_MIN) before the tongue
+function ghost(ctx, sim, C, S, L, gk, t, calm) {
+  ctx.save(); ctx.lineCap = 'round';
+  const easy = sim.mode === 'easy';
+  if (C.ph === 'fade' && gk < 1) { // the shimmer: sparkles lift off his back as the colour drains
+    for (let i = 0; i < 9; i++) {
+      const c = bodyAt(S, L * (0.05 + 0.1 * i)), w = Math.sin(gk * Math.PI), dy = 0.12 * gk + 0.04 * Math.sin(t * 9 + i * 2.1);
+      ctx.globalAlpha = 0.9 * w; ctx.fillStyle = i % 2 ? '#e8fff4' : '#bff7d8';
+      ctx.beginPath(); ctx.arc(c.x + 0.05 * Math.sin(i * 1.7 + t * 6), c.y + dy, 0.035 + 0.03 * w, 0, TAU); ctx.fill();
+    }
+  } else if (C.ph !== 'pop' && easy) { // Easy only: a faint heat-ripple along his back
+    ctx.strokeStyle = '#e8fff4'; ctx.lineWidth = 0.025;
+    for (let i = 0; i < 6; i++) {
+      const c = bodyAt(S, L * (0.1 + 0.22 * i)), w = (calm ? 0.5 : 0.5 + 0.5 * Math.sin(t * 7 - i * 1.3));
+      ctx.globalAlpha = 0.16 * gk * w; ctx.beginPath(); ctx.arc(c.x, c.y, 0.07 + 0.03 * w, 0, TAU); ctx.stroke();
+    }
   }
   if (C.ph === 'pop') {
     const f = clamp((C.dur - C.t) / (C.dur || 1), 0, 1), h = bodyAt(S, L * 0.3), cols = ['#9fe07a', '#ffd34d', '#ff7aa8', '#7ad7ff'];
+    const rr = 0.9 - 0.55 * f; ctx.globalAlpha = 0.95 * (1 - 0.3 * f); ctx.strokeStyle = '#1d3d12'; ctx.lineWidth = 0.13; // the telegraph ring closes on him
+    ctx.beginPath(); ctx.arc(h.x, h.y, rr, 0, TAU); ctx.stroke();
+    ctx.strokeStyle = '#c8ff8a'; ctx.lineWidth = 0.075; ctx.beginPath(); ctx.arc(h.x, h.y, rr, 0, TAU); ctx.stroke();
+    ctx.globalAlpha = 0.35 * (1 - f); ctx.fillStyle = '#c8ff8a'; ctx.beginPath(); ctx.arc(h.x, h.y, rr, 0, TAU); ctx.fill();
     for (let i = 0; i < 8; i++) { const a = (i * TAU) / 8 + (calm ? 0 : f), r = 0.15 + 0.45 * f; ctx.globalAlpha = 0.9 * (1 - f); ctx.fillStyle = cols[i % 4]; ctx.beginPath(); ctx.arc(h.x + Math.cos(a) * r, h.y + Math.sin(a) * r, 0.06 * (1 - f * 0.5), 0, TAU); ctx.fill(); }
   }
   ctx.restore();

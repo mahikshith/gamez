@@ -109,7 +109,7 @@ function spitPose(q, t) {
 const lerp = (a, b, k) => a + (b - a) * k;
 // the faint arrow along his ring the way he will turn it (the crank's telegraph), sliding his way while he cranks
 function crankArrow(ctx, sim, B, t, k, calm) {
-  const ring = sim.rings[B.ri], P = clamp(1 - B.t / Math.max(1e-3, B.dur), 0, 1), al = B.ph === 'spit' ? ss(0.1, 0.6, P) : 1;
+  const ring = sim.rings[B.pry ? B.ri - 1 : B.ri], P = clamp(1 - B.t / Math.max(1e-3, B.dur), 0, 1), al = B.ph === 'spit' ? ss(0.1, 0.6, P) : 1;
   if (!ring || al <= 0) return;
   const r = ring.r, a0 = B.pa - B.side * 6 * D2R, a1 = B.pa - B.side * 62 * D2R, lo = Math.min(a0, a1), hi = Math.max(a0, a1), head = B.dir > 0 ? hi : lo;
   const pulse = calm ? 0.8 : 0.65 + 0.35 * Math.sin(t * 5);

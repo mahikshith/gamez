@@ -686,7 +686,7 @@ function poseOf(C) {
     case 'in': return { pose: 'idle' };
     case 'coil': return { pose: 'bite', p: 0.8 * u, aimAt: 'egg' }; // (0.8.14) the bite: coil, eyes on the egg
     // 0.8.19 the tongue: crouch low, throat glowing, eyes locked (lash); jaws wide as it flies (fling); braced, pulling (reel)
-    case 'lash': return { pose: 'bite', p: 0.18 + 0.4 * sstep(u), aimAt: 'lash', throat: sstep(u) };
+    case 'lash': return u < 0.55 ? { pose: 'hiss', p: 0.35 + 0.65 * sstep(u / 0.55), aimAt: 'lash', throat: sstep(u) } : { pose: 'bite', p: 0.3 + 0.5 * sstep((u - 0.55) / 0.45), aimAt: 'lash', throat: 1 }; // 0.8.19 the wind-up: he rears back, throat swelling, then the jaws open on the egg
     case 'fling': return { pose: 'bite', p: 0.9, aimAt: 'lash' };
     case 'reel': return { pose: 'bite', p: 0.75, aimAt: 'lash', pull: 1 };
     case 'strain': return { pose: 'hiss', p: 0.6, aimAt: 'lash', pull: 1, shake: 1 };
@@ -718,7 +718,18 @@ function poseOf(C) {
   return { pose: 'idle' };
 }
 
+// 0.8.19 the tongue reads over everything in play (the owner could not see it under the pickup labels): drawn with the
+// creatures, and once more, at the same place, after the labels (drawSalTop, from main.js's popup pass)
+const TOP = [];
+function topTongue(ctx, M, tip, k, t, calm, strain, after) {
+  after.push(() => { drawTongue(ctx, M, tip, k, t, calm, strain); TOP.push({ T: ctx.getTransform(), M, tip, k, t, calm, strain }); });
+}
+export function drawSalTop(ctx) {
+  for (const q of TOP) { ctx.save(); ctx.setTransform(q.T); drawTongue(ctx, q.M, q.tip, q.k, q.t, q.calm, q.strain); ctx.restore(); }
+  TOP.length = 0;
+}
 export function drawSalamanders(ctx, sim, t, k, calm = false) {
+  TOP.length = 0;
   const after = [], low = PERF.low;
   for (const C of sim.sals || []) {
     if (C.sp === 'gecko') { drawGecko15(ctx, sim, k, t, false); continue; } // Baron von Brr (render/gecko15.js)
@@ -836,17 +847,20 @@ export function drawSalamanders(ctx, sim, t, k, calm = false) {
     if (C.ph === 'lash' || (C.ph === 'brake' && C.pend === 'lash')) {
       const e = sim.eggs.find((x) => x.id === C.lj && x.alive && !x.saved), u = C.ph === 'lash' ? du : 0;
       if (e) after.push(() => lockRing(ctx, e.body.getPosition(), u, t, calm));
+      // 0.8.19 the last of the wind-up: the sticky tip already peeks out of his open jaws, aimed at the egg
+      if (e && u > 0.6) { const M = sim.salMouth(C), q = e.body.getPosition(), d = Math.hypot(q.x - M.x, q.y - M.y) || 1, f = 0.22 * sstep((u - 0.6) / 0.4);
+        topTongue(ctx, M, { x: M.x + (q.x - M.x) / d * f, y: M.y + (q.y - M.y) / d * f }, 0, t, calm, false, after); }
     }
     if (C.ph === 'fling' || C.ph === 'reel' || C.ph === 'strain') {
       const e = sim.eggs.find((x) => x.id === C.lj && x.alive && !x.saved), M = sim.salMouth(C);
       if (e) {
         const q = e.body.getPosition(), f = C.ph === 'fling' ? backOut(C.lk) : 1, tip = { x: M.x + (q.x - M.x) * f, y: M.y + (q.y - M.y) * f };
         R.tg = { x: tip.x, y: tip.y, t };
-        after.push(() => drawTongue(ctx, M, tip, C.ph === 'fling' ? 0 : C.ls, t, calm, C.ph === 'strain'));
+        topTongue(ctx, M, tip, C.ph === 'fling' ? 0 : C.ls, t, calm, C.ph === 'strain', after);
       }
     } else if (R.tg && t - R.tg.t < 0.18) { // snapped back: it flies home
       const M = sim.salMouth(C), f = 1 - sstep((t - R.tg.t) / 0.18), tip = { x: M.x + (R.tg.x - M.x) * f, y: M.y + (R.tg.y - M.y) * f };
-      after.push(() => drawTongue(ctx, M, tip, 0, t, calm, false));
+      topTongue(ctx, M, tip, 0, t, calm, false, after);
     }
     // the bite's telegraph: a red ring closes on the egg it is about to snap at (0.8.14)
     if (C.ph === 'coil') {
@@ -897,17 +911,21 @@ function drawTongue(ctx, M, tip, k, t, calm, strain) {
   const dx = tip.x - M.x, dy = tip.y - M.y, L = Math.hypot(dx, dy);
   if (L < 0.02) return;
   const nx = -dy / L, ny = dx / L, tr = calm ? 0 : (0.025 * k + (strain ? 0.03 : 0)) * Math.sin(t * 55), sag = 0.12 * (1 - k) * Math.min(1, L / 1.2);
-  const cx = M.x + dx * 0.5 + nx * (tr - sag), cy = M.y + dy * 0.5 + ny * (tr - sag) - sag * 0.6, w = 0.085 * (1 - 0.55 * k);
+  // 0.8.19 thick and bright at any zoom: never under ~7.5 CSS px across (plus a ~2.5 px dark outline), the owner's phone
+  const T = ctx.getTransform(), px = Math.max(1e-6, Math.hypot(T.a, T.b) / ((typeof devicePixelRatio === 'number' && devicePixelRatio) || 1)); // CSS px per m
+  const cx = M.x + dx * 0.5 + nx * (tr - sag), cy = M.y + dy * 0.5 + ny * (tr - sag) - sag * 0.6, w = Math.max(0.14 * (1 - 0.3 * k), 7.5 / px), ol = Math.max(0.05, 5 / px);
   ctx.save();
   ctx.lineCap = 'round';
-  ctx.strokeStyle = '#7a0f24'; ctx.lineWidth = w + 0.035;
+  ctx.strokeStyle = '#4a0614'; ctx.lineWidth = w + ol;
   ctx.beginPath(); ctx.moveTo(M.x, M.y); ctx.quadraticCurveTo(cx, cy, tip.x, tip.y); ctx.stroke();
-  ctx.strokeStyle = k > 0.6 && !calm ? `rgb(${230 + 25 * k},${70 - 30 * k},${90 - 40 * k})` : '#e0466a'; ctx.lineWidth = w;
+  ctx.strokeStyle = k > 0.6 && !calm ? `rgb(255,${70 - 30 * k},${100 - 40 * k})` : '#ff3d6e'; ctx.lineWidth = w;
   ctx.beginPath(); ctx.moveTo(M.x, M.y); ctx.quadraticCurveTo(cx, cy, tip.x, tip.y); ctx.stroke();
   ctx.strokeStyle = 'rgba(255,190,205,0.75)'; ctx.lineWidth = w * 0.28;
   ctx.beginPath(); ctx.moveTo(M.x + nx * w * 0.2, M.y + ny * w * 0.2); ctx.quadraticCurveTo(cx + nx * w * 0.2, cy + ny * w * 0.2, tip.x + nx * w * 0.2, tip.y + ny * w * 0.2); ctx.stroke();
-  ctx.fillStyle = '#c42a4e'; ctx.beginPath(); ctx.ellipse(tip.x, tip.y, 0.11, 0.08, Math.atan2(dy, dx), 0, TAU); ctx.fill();
-  ctx.fillStyle = 'rgba(255,200,215,0.8)'; ctx.beginPath(); ctx.arc(tip.x - nx * 0.02 + dx / L * 0.02, tip.y - ny * 0.02 + dy / L * 0.02, 0.03, 0, TAU); ctx.fill();
+  const tw = Math.max(0.15, w * 1.25), th = tw * 0.78, ta = Math.atan2(dy, dx); // the sticky pad: a fat blob with a dark rim and a wet glint
+  ctx.fillStyle = '#4a0614'; ctx.beginPath(); ctx.ellipse(tip.x, tip.y, tw + ol / 2, th + ol / 2, ta, 0, TAU); ctx.fill();
+  ctx.fillStyle = '#ff3d6e'; ctx.beginPath(); ctx.ellipse(tip.x, tip.y, tw, th, ta, 0, TAU); ctx.fill();
+  ctx.fillStyle = 'rgba(255,215,228,0.9)'; ctx.beginPath(); ctx.arc(tip.x - nx * th * 0.3 - dx / L * tw * 0.2, tip.y - ny * th * 0.3 - dy / L * tw * 0.2, th * 0.32, 0, TAU); ctx.fill();
   ctx.restore();
 }
 // the lock-on: two arcs close on the egg and spin the other way as the tell runs out
