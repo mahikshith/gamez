@@ -475,7 +475,7 @@ function pinchTick(dt) {
   }
   const s = K.save;
   if (s.pinchSeen || s.zoomed || !G.level || G.demo || !(G.level.id === 2 || G.level.id === 3) || G.screen !== 'play' || !sim || sim.state !== 'play') return;
-  if (G.cv.playT < PINCH.at || G.lesson || G.lessonQ.length || G.teach || G.zm != null || K.busy() || heldRing() != null || (G.tp && G.tp.size)) return;
+  if (G.cv.playT < PINCH.at || G.lesson || G.lessonQ.length || G.teach || G.tourPause || G.zm != null || K.busy() || heldRing() != null || (G.tp && G.tp.size)) return;
   if (sim.timeLimit && sim.timeLeft < 20) return;
   s.pinchSeen = 1; K.persist();
   G.pinchTip = { age: 0, out: null };

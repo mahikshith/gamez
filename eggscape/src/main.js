@@ -3946,7 +3946,7 @@ function tourPauseHud(x, y, d) {
   if (!G.tourPause) {
     if (TR.tourSeen(save, 'pauseBtn') || G.screen !== 'play' || !sim || sim.state !== 'play') return;
     const quiet = G.held.size === 0 && sim.t >= TR.TOUR.pauseAfter && G.t - (G.touchAt || 0) >= TR.TOUR.pauseIdle;
-    const busy = fuseIntroOn() || lessonOn() || !!G.teach || !!G.toast || G.toasts.length > 0 || !!G.hint || !!G.hintShow || !!G.card || !!G.endCard || !!G.slow || modalOpen() || (G.stkHint != null && G.t - G.stkHint < 6) || (!!G.roosterCoach && G.roosterRun === G.run);
+    const busy = fuseIntroOn() || lessonOn() || !!G.pinchTip || !!G.teach || !!G.toast || G.toasts.length > 0 || !!G.hint || !!G.hintShow || !!G.card || !!G.endCard || !!G.slow || modalOpen() || (G.stkHint != null && G.t - G.stkHint < 6) || (!!G.roosterCoach && G.roosterRun === G.run);
     if (!TR.tourMay(save, 'pauseBtn', { screen: G.screen, levelId: tourLv(), won1: bestStarsOf(1) > 0, quiet, busy })) return;
     G.tourPause = { t0: G.t, run: G.run }; tourStart('pauseBtn'); audio.play('hud_pop', { vol: 0.55 });
   }
