@@ -11734,7 +11734,8 @@ function drawLevels() {
     if (coin) {
       const price = GATE_COINS(w), rich = save.wallet.coins >= price, Bt = g.btn, bty = Bt.y - sy;
       if (bty + Bt.h < vt || bty > H_ || (ctaOn && wide && Bt.x + Bt.w > ctaX - 6 * u && bty + Bt.h > ctaY - 6 * u)) continue; // (never under PLAY in the corner)
-      const full = bty >= vt + 2 * u && bty + Bt.h <= tapBot, n0 = ui.rects.length, b0 = ui.buttons.length;
+      const gearHit = !ctaOn && Bt.x < A.x + pad + 62 * u && bty + Bt.h > A.y1 - pad - 62 * u; // (never under the map's gear in the corner: the gear takes the tap)
+      const full = bty >= vt + 2 * u && bty + Bt.h <= tapBot && !gearHit, n0 = ui.rects.length, b0 = ui.buttons.length;
       const r = ui.button('gate:' + w, '', Bt.x, bty, Bt.w, Bt.h, { kind: rich ? 'gold' : 'off', disabled: !rich, dim: 1 });
       if (!full) { ui.rects.length = n0; ui.buttons.length = b0; }
       const fs = 18 * u, ow = ui.measure('Open', fs), pw = ui.measure(String(price), fs), cr = 9 * u, tot = ow + 9 * u + cr * 2 + 5 * u + pw, lx = Bt.x + Bt.w / 2 - tot / 2;
