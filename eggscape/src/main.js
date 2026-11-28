@@ -1138,8 +1138,13 @@ function shotsApply(T, dt) {
   if (DEV && G.noShots) return T; // QA: the camera as it was before the director (the audit's "before")
   const S = cv.shots && cv.shots.sim === sim ? cv.shots : (cv.shots = Object.assign(SHOTS.newShots(), { sim }));
   const cast = (S.cast = castOf(sim));
+  // 0.8.19 the stage the director holds: what this resting frame shows of the vault (all of it when the frame is a
+  // whole-vault shot, give or take its margin: L6), and every den (whole)
+  const R0 = sim.outerR + RING_TH / 2 + 0.15, hw = G.play.w / (2 * T.k), hh = G.play.h / (2 * T.k), fx = hw >= 0.9 * R0, fy = hh >= 0.9 * R0;
+  const stage = [{ x0: fx ? -R0 : Math.max(T.x - hw, -R0), x1: fx ? R0 : Math.min(T.x + hw, R0), y0: fy ? -R0 : Math.max(T.y - hh, -R0), y1: fy ? R0 : Math.min(T.y + hh, R0) }];
+  for (const D0 of sim.thieves || []) { const p = sim.thDenPt(D0); if (p && Number.isFinite(p.x)) stage.push({ x0: p.x - 1.15, x1: p.x + 1.15, y0: p.y - 1.15, y1: p.y + 1.15 }); }
   const D = SHOTS.direct(S, T, cast, sim.aliveEggs().map((e) => e.body.getPosition()), G.play, {
-    dt, live: cv.playT, wholeK: cv.F ? cv.F.k : T.k, calm: !!save.calm, low: !!PERF.low, userAge: G.t - (G.zmT ?? -99), cam: G.cam, demo: pinchZoom(), frozen: lessonFrozen(),
+    stage, dt, live: cv.playT, wholeK: cv.F ? cv.F.k : T.k, calm: !!save.calm, low: !!PERF.low, userAge: G.t - (G.zmT ?? -99), cam: G.cam, demo: pinchZoom(), frozen: lessonFrozen(),
   });
   if (!D) return T;
   cv.smooth = D.smooth;
@@ -1186,11 +1191,13 @@ function updateCamera(dt) {
     cam.x = T.x; cam.y = T.y; cam.k = T.k;
     cv.vx = cv.vy = cv.vk = cv.kick = cv.kickV = 0;
   } else {
-    const st = cv.smooth || 0.4;
+    const st = cv.smooth || 0.4, px0 = cam.x, py0 = cam.y;
     [cam.x, cv.vx] = smoothDamp(cam.x, T.x, cv.vx, st, dt);
     [cam.y, cv.vy] = smoothDamp(cam.y, T.y, cv.vy, st, dt);
     const [lk, vk] = smoothDamp(Math.log(cam.k), Math.log(T.k), cv.vk, st * 1.15, dt);
-    cam.k = Math.exp(lk); cv.vk = vk;
+    const k0 = cam.k; cam.k = Math.exp(lk); cv.vk = vk;
+    // 0.8.19 under the director no move is faster than its speed limit (engine/shots.js SHOTS.maxPan / maxZoom)
+    if (cv.shots && cv.shots.on && G.screen === 'play') { const L = SHOTS.limitStep({ x: px0, y: py0, k: k0 }, cam, dt); if (L.slowed) { cam.x = L.x; cam.y = L.y; cam.k = L.k; cv.vx = (cam.x - px0) / Math.max(dt, 1e-6); cv.vy = (cam.y - py0) / Math.max(dt, 1e-6); cv.vk = Math.log(cam.k / k0) / Math.max(dt, 1e-6); } }
   }
   // the punch spring (under-damped: one small overshoot)
   const om = 24, h = Math.min(dt, 0.033);
